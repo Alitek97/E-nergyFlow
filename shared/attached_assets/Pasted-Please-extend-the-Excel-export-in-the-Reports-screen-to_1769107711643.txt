@@ -1,0 +1,74 @@
+Please extend the Excel export in the Reports screen to include DAILY and MONTHLY aggregation in the .xlsx file.
+
+CURRENT:
+- We are adding "Export as Excel" that creates an .xlsx with:
+  Sheet 1: Feeders (Feeder Name | End of Day | Difference)
+  Sheet 2: Turbines (Turbine Name | End of Day | Difference)
+  Sheet 3: Summary (Production, Export/Withdrawal, Consumption, Gas Consumption)
+
+NEW REQUIREMENT:
+Add aggregation sheets based on the stored historical daily records:
+
+=====================
+1) Daily Aggregation (Last 31 days)
+=====================
+- Add a sheet: "Daily Summary" (ar: "ملخص يومي")
+- It should include up to the last 31 days with available data (or fewer if less exists).
+- Each row = one day (sorted by date ascending).
+- Columns:
+  Date
+  Production (MWh)
+  Export/Withdrawal (MWh)  [dynamic label per day based on the saved mode for that day]
+  Consumption (MWh)
+  Gas Consumption (Nm³)
+
+Rules:
+- Use the same saved daily report data already used by the app.
+- Keep terminology consistent (withdrawal/export).
+- Negative sign must be before the number (even in Arabic).
+
+=====================
+2) Monthly Aggregation (Last 12 months)
+=====================
+- Add a sheet: "Monthly Summary" (ar: "ملخص شهري")
+- Group the saved daily records by month (YYYY-MM).
+- Include up to the last 12 months with data (sorted ascending).
+- Each row = one month.
+- Columns:
+  Month (e.g., 2026-01 or localized format)
+  Total Production (sum)
+  Total Export OR Total Withdrawal (sum, based on day mode; if mixed modes in the month, handle clearly—see next rule)
+  Total Consumption (sum)
+  Total Gas Consumption (sum)
+  Days Count
+
+Monthly mode rule (important):
+- If within the same month there are both export days and withdrawal days, do NOT merge them into one ambiguous column.
+  In that case, create TWO separate columns:
+    Total Export
+    Total Withdrawal
+  If the month contains only one mode, you may fill the other as 0.
+- Keep labels translated:
+  - export / withdrawal
+  - تصدير / سحب
+
+=====================
+3) Formatting
+=====================
+- Use clear headers with bold style.
+- Auto-size columns if possible (or set reasonable widths).
+- Dates should be stored as strings formatted for readability.
+- Numeric cells should be numbers, not strings.
+
+=====================
+Constraints
+=====================
+- Do NOT change calculations or stored data structure.
+- Only extend Excel export generation and translation files.
+- Use Expo-friendly libraries (xlsx + expo-file-system + expo-sharing).
+- Keep existing withdrawal/export logic and terminology unchanged (do NOT use "import").
+
+Deliverables:
+- Exact files changed
+- Code diff
+- Short explanation of how daily/monthly grouping is computed

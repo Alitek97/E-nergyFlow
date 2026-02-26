@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "E-nergy Flow",
+    "slug": "power-plant-calculations",
+    "version": "1.7.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "powerplantcalc",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.energyflow.alitek97",
+      "buildNumber": "1"
+    },
+    "android": {
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0E1A",
+        "foregroundImage": "./assets/images/icon.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.energyflow.alitek97"
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0A0E1A",
+          "dark": {
+            "backgroundColor": "#0A0E1A"
+          }
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "34ab1c58-342c-4653-8b01-fe8b919d8940"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/34ab1c58-342c-4653-8b01-fe8b919d8940"
+    }
+  }
+}

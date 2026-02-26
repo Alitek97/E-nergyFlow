@@ -1,0 +1,1137 @@
+import React, { useEffect, useMemo, useState } from "react";
+
+/**
+ * Power Plant Offline App (MVP)
+ * Tabs: Feeders / Turbines / Calculations / Reports
+ * - Offline persistence per day using localStorage
+ * - Feeders: F2..F5 Start/End => Difference (MWh)
+ * - Turbines: A,B,C,S Previous/Present + Hours => Difference (MWh) + MW/hr
+ * - Calculations: Production, Export, Consumption + Gas formula + totals
+ * - Reports: Current day + Monthly stats + Export/Import JSON
+ *
+ * Units note:
+ * - Feeders readings are typically kWh. Diff => kWh. Shown as MWh = kWh/1000.
+ * - Turbines "Previous/Present" can be MWh meter OR kWh meter; here we treat as MWh (like screenshot shows MW).
+ *   You can rename labels later to match your station convention.
+ */
+
+const FEEDERS = ["F2", "F3", "F4", "F5"];
+const TURBINES = ["A", "B", "C", "S"];
+
+const STORAGE_PREFIX = "pp-app:v2";
+
+function todayKey() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function monthKey(dateKey) {
+  // YYYY-MM
+  return dateKey.slice(0, 7);
+}
+
+function storageKey(dateKey) {
+  return `${STORAGE_PREFIX}:day:${dateKey}`;
+}
+
+function listKey() {
+  return `${STORAGE_PREFIX}:days:index`;
+}
+
+function safeJsonParse(s, fallback) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return fallback;
+  }
+}
+
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function format2(v) {
+  return (Math.round(v * 100) / 100).toFixed(2);
+}
+
+function format4(v) {
+  return (Math.round(v * 10000) / 10000).toFixed(4);
+}
+
+function upsertDayIndex(dateKey) {
+  const raw = localStorage.getItem(listKey());
+  const arr = safeJsonParse(raw, []);
+  if (!arr.includes(dateKey)) {
+    arr.push(dateKey);
+    arr.sort(); // chronological
+    localStorage.setItem(listKey(), JSON.stringify(arr));
+  }
+}
+
+function getDayIndex() {
+  return safeJsonParse(localStorage.getItem(listKey()), []);
+}
+
+function defaultDay(dateKey) {
+  return {
+    dateKey,
+    feeders: Object.fromEntries(FEEDERS.map((f) => [f, { start: "", end: "" }])),
+    turbines: Object.fromEntries(
+      TURBINES.map((t) => [t, { previous: "", present: "", hours: "24" }])
+    ),
+    // optional notes later
+  };
+}
+
+/** UI bits */
+function TabButton({ active, icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        border: "none",
+        background: "transparent",
+        padding: "10px 8px",
+        color: active ? "#1f6feb" : "#667085",
+        fontWeight: active ? 800 : 700,
+      }}
+    >
+      <div style={{ fontSize: 18, lineHeight: "18px" }}>{icon}</div>
+      <div style={{ fontSize: 12, marginTop: 4 }}>{label}</div>
+    </button>
+  );
+}
+
+function Card({ title, children, icon }) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        borderRadius: 16,
+        boxShadow: "0 6px 20px rgba(16,24,40,0.08)",
+        border: "1px solid #eef2f7",
+        marginBottom: 14,
+        overflow: "hidden",
+      }}
+    >
+      {title ? (
+        <div
+          style={{
+            padding: "14px 16px",
+            fontSize: 16,
+            fontWeight: 900,
+            color: "#1f6feb",
+            background: "#f3f8ff",
+            borderBottom: "1px solid #eef2f7",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          {icon ? <span>{icon}</span> : null}
+          <span>{title}</span>
+        </div>
+      ) : null}
+      <div style={{ padding: "14px 16px" }}>{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, placeholder = "0" }) {
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 12, color: "#667085", marginBottom: 6 }}>
+        {label}
+      </div>
+      <input
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: "100%",
+          borderRadius: 12,
+          border: "1px solid #d0d5dd",
+          padding: "12px 12px",
+          fontSize: 16,
+          outline: "none",
+        }}
+      />
+    </div>
+  );
+}
+
+function MiniStat({ label, value, highlight = false }) {
+  return (
+    <div
+      style={{
+        background: highlight ? "#f3f8ff" : "#fff",
+        border: highlight ? "2px solid #b2ddff" : "1px solid #eef2f7",
+        borderRadius: 14,
+        padding: "12px 12px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 10,
+      }}
+    >
+      <div style={{ color: "#667085", fontWeight: 700, fontSize: 13 }}>
+        {label}
+      </div>
+      <div style={{ fontWeight: 900, color: highlight ? "#1f6feb" : "#101828" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function BigPill({ title, value, subtitle, tone = "blue" }) {
+  const bg = tone === "red" ? "#fff1f3" : tone === "green" ? "#ecfdf3" : "#f3f8ff";
+  const border = tone === "red" ? "#fecdd6" : tone === "green" ? "#abefc6" : "#b2ddff";
+  const color = tone === "red" ? "#c01048" : tone === "green" ? "#027a48" : "#1f6feb";
+
+  return (
+    <div
+      style={{
+        background: bg,
+        border: `2px solid ${border}`,
+        borderRadius: 16,
+        padding: "16px 14px",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 900, color }}>{title}</div>
+      <div style={{ fontSize: 34, fontWeight: 950, marginTop: 6, color }}>
+        {value}
+      </div>
+      {subtitle ? (
+        <div style={{ fontSize: 12, color: "#667085", marginTop: 4 }}>
+          {subtitle}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HeaderBar({ title, dateKey, setDateKey, onReset, onSave }) {
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div style={{ fontSize: 26, fontWeight: 950, color: "#1f6feb" }}>{title}</div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          {onReset ? (
+            <button
+              onClick={onReset}
+              style={{
+                border: "none",
+                borderRadius: 14,
+                padding: "10px 12px",
+                background: "#fff1f3",
+                color: "#c01048",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+              title="Reset"
+            >
+              ↻
+            </button>
+          ) : null}
+          {onSave ? (
+            <button
+              onClick={onSave}
+              style={{
+                border: "none",
+                borderRadius: 14,
+                padding: "10px 12px",
+                background: "#1f6feb",
+                color: "white",
+                fontWeight: 950,
+                cursor: "pointer",
+              }}
+              title="Save"
+            >
+              💾
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontWeight: 900, color: "#344054" }}>📅 Today</div>
+          <input
+            type="date"
+            value={dateKey}
+            onChange={(e) => setDateKey(e.target.value)}
+            style={{
+              marginLeft: "auto",
+              borderRadius: 12,
+              border: "1px solid #d0d5dd",
+              padding: "10px 12px",
+              fontSize: 14,
+              outline: "none",
+            }}
+          />
+        </div>
+      </Card>
+    </>
+  );
+}
+
+/** Calculations helpers */
+function feederExportMwh(day) {
+  // Diff (kWh) => MWh. Positive means Export (based on your screenshot).
+  const rows = FEEDERS.map((f) => {
+    const start = num(day.feeders[f]?.start);
+    const end = num(day.feeders[f]?.end);
+    const diffKwh = end - start;
+    return diffKwh / 1000;
+  });
+  return rows.reduce((a, v) => a + v, 0);
+}
+
+function turbineProductionMwh(day) {
+  // We treat (present - previous) as "production amount" for the day (MWh)
+  // If you want it based on hours & MW/hr, we can adjust. Screenshot shows both.
+  const rows = TURBINES.map((t) => {
+    const prev = num(day.turbines[t]?.previous);
+    const pres = num(day.turbines[t]?.present);
+    return pres - prev;
+  });
+  return rows.reduce((a, v) => a + v, 0);
+}
+
+function turbineRowComputed(day, t) {
+  const prev = num(day.turbines[t]?.previous);
+  const pres = num(day.turbines[t]?.present);
+  const hours = Math.max(0.000001, num(day.turbines[t]?.hours || 24));
+  const diff = pres - prev; // "Difference"
+  const mwPerHr = diff / hours; // MW/Hr (as in screenshot)
+  return { prev, pres, hours, diff, mwPerHr };
+}
+
+function gasForTurbine(diffMwh, mwPerHr) {
+  // Your formula from earlier screenshot text:
+  // IF(MW/h<=3; Production*1000; IF<=5; Production*700; IF<=8; Production*500; IF>8; Production*420))
+  // "Production" here uses diffMWh (daily production).
+  const p = diffMwh;
+  const r = mwPerHr;
+
+  if (r <= 3) return p * 1000;
+  if (r <= 5) return p * 700;
+  if (r <= 8) return p * 500;
+  return p * 420;
+}
+
+function m3ToMMscf(m3) {
+  // 1 m3 ≈ 35.3146667 scf; 1 MMscf = 1,000,000 scf
+  return (m3 * 35.3146667) / 1_000_000;
+}
+
+/** Tabs */
+function FeedersTab({ day, setDay, dateKey, setDateKey, saveDay, resetDay }) {
+  const rows = useMemo(() => {
+    return FEEDERS.map((f) => {
+      const start = num(day.feeders[f]?.start);
+      const end = num(day.feeders[f]?.end);
+      const diffKwh = end - start;
+      const diffMwh = diffKwh / 1000;
+      return { f, start, end, diffMwh };
+    });
+  }, [day]);
+
+  const total = rows.reduce((a, r) => a + r.diffMwh, 0);
+  const isExport = total >= 0;
+
+  return (
+    <div style={{ padding: 16, paddingBottom: 90 }}>
+      <HeaderBar
+        title="Feeders"
+        dateKey={dateKey}
+        setDateKey={setDateKey}
+        onReset={resetDay}
+        onSave={saveDay}
+      />
+
+      <Card title="Feeders Input">
+        {rows.map((r) => (
+          <div key={r.f} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 16, fontWeight: 950, color: "#101828" }}>
+              Feeder {r.f}
+            </div>
+
+            <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
+              <Field
+                label="Start of Day"
+                value={day.feeders[r.f].start}
+                onChange={(v) =>
+                  setDay((prev) => ({
+                    ...prev,
+                    feeders: { ...prev.feeders, [r.f]: { ...prev.feeders[r.f], start: v } },
+                  }))
+                }
+              />
+              <Field
+                label="End of Day"
+                value={day.feeders[r.f].end}
+                onChange={(v) =>
+                  setDay((prev) => ({
+                    ...prev,
+                    feeders: { ...prev.feeders, [r.f]: { ...prev.feeders[r.f], end: v } },
+                  }))
+                }
+              />
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                background: "#f3f8ff",
+                border: "1px solid #e0f2fe",
+                borderRadius: 16,
+                padding: 14,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#667085", fontWeight: 800 }}>
+                Difference
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 950, color: "#101828" }}>
+                {format2(r.diffMwh)} <span style={{ fontSize: 14 }}>MW</span>
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: "#eef2f7", marginTop: 16 }} />
+          </div>
+        ))}
+      </Card>
+
+      <Card title="Export/Withdrawal Summary">
+        <BigPill
+          title={isExport ? "Export" : "Withdrawal"}
+          value={`${format2(total)} MW`}
+          subtitle={isExport ? "Positive energy flow" : "Negative energy flow"}
+          tone={isExport ? "blue" : "red"}
+        />
+      </Card>
+
+      <Card title="Feeders Summary">
+        {rows.map((r) => (
+          <div
+            key={r.f}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "10px 0",
+              borderBottom: "1px solid #eef2f7",
+              gap: 10,
+            }}
+          >
+            <div style={{ width: 90, fontWeight: 950, color: "#101828" }}>
+              Feeder {r.f}
+            </div>
+
+            <div style={{ flex: 1, display: "flex", gap: 10 }}>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: "#667085" }}>Previous</div>
+                <div style={{ fontWeight: 950 }}>{format2(r.start)}</div>
+              </div>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: "#667085" }}>Present</div>
+                <div style={{ fontWeight: 950 }}>{format2(r.end)}</div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                width: 120,
+                background: "#f3f8ff",
+                border: "2px solid #b2ddff",
+                borderRadius: 14,
+                padding: "10px 8px",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#667085", fontWeight: 800 }}>
+                Difference
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 950 }}>
+                {format2(r.diffMwh)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+function TurbinesTab({ day, setDay, dateKey, setDateKey, saveDay, resetDay }) {
+  const rows = useMemo(() => {
+    return TURBINES.map((t) => {
+      const c = turbineRowComputed(day, t);
+      return { t, ...c };
+    });
+  }, [day]);
+
+  const totalProd = rows.reduce((a, r) => a + r.diff, 0);
+
+  return (
+    <div style={{ padding: 16, paddingBottom: 90 }}>
+      <HeaderBar
+        title="Turbines"
+        dateKey={dateKey}
+        setDateKey={setDateKey}
+        onReset={resetDay}
+        onSave={saveDay}
+      />
+
+      <Card title="Turbines Input">
+        {rows.map((r) => (
+          <div key={r.t} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 16, fontWeight: 950, color: "#101828" }}>
+              Turbine {r.t}
+            </div>
+
+            <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
+              <Field
+                label="Previous"
+                value={day.turbines[r.t].previous}
+                onChange={(v) =>
+                  setDay((prev) => ({
+                    ...prev,
+                    turbines: {
+                      ...prev.turbines,
+                      [r.t]: { ...prev.turbines[r.t], previous: v },
+                    },
+                  }))
+                }
+              />
+              <Field
+                label="Present"
+                value={day.turbines[r.t].present}
+                onChange={(v) =>
+                  setDay((prev) => ({
+                    ...prev,
+                    turbines: {
+                      ...prev.turbines,
+                      [r.t]: { ...prev.turbines[r.t], present: v },
+                    },
+                  }))
+                }
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+              <Field
+                label="Hours"
+                value={day.turbines[r.t].hours}
+                onChange={(v) =>
+                  setDay((prev) => ({
+                    ...prev,
+                    turbines: {
+                      ...prev.turbines,
+                      [r.t]: { ...prev.turbines[r.t], hours: v },
+                    },
+                  }))
+                }
+                placeholder="24"
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: "#667085", marginBottom: 6 }}>
+                  MW/Hr
+                </div>
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "2px solid #b2ddff",
+                    background: "#f3f8ff",
+                    padding: "12px 12px",
+                    fontSize: 18,
+                    fontWeight: 950,
+                    textAlign: "center",
+                  }}
+                >
+                  {format3(r.mwPerHr)}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                background: "#f3f8ff",
+                border: "1px solid #e0f2fe",
+                borderRadius: 16,
+                padding: 14,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#667085", fontWeight: 800 }}>
+                Difference
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 950, color: "#101828" }}>
+                {format2(r.diff)} <span style={{ fontSize: 14 }}>MW</span>
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: "#eef2f7", marginTop: 16 }} />
+          </div>
+        ))}
+      </Card>
+
+      <Card title="Total Production" icon="🏭">
+        <BigPill
+          title="Total Turbine Production"
+          value={`${format2(totalProd)} MW`}
+          subtitle="Sum of all turbine production differences"
+          tone="blue"
+        />
+        <div
+          style={{
+            marginTop: 12,
+            background: "#f3f4f6",
+            borderRadius: 14,
+            padding: 12,
+            border: "1px solid #eef2f7",
+          }}
+        >
+          {rows.map((r) => (
+            <div
+              key={r.t}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+                color: "#344054",
+                fontWeight: 800,
+              }}
+            >
+              <span>Turbine {r.t}:</span>
+              <span>{format2(r.diff)} MW</span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={resetDay}
+          style={{
+            marginTop: 14,
+            width: "100%",
+            border: "none",
+            borderRadius: 14,
+            padding: "14px 14px",
+            background: "#f04438",
+            color: "white",
+            fontWeight: 950,
+            fontSize: 16,
+            cursor: "pointer",
+          }}
+        >
+          ↻ Reset All Values
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+// helper missing above
+function format3(v) {
+  return (Math.round(v * 1000) / 1000).toFixed(3);
+}
+
+function CalculationsTab({ day, dateKey, setDateKey, saveDay, resetDay }) {
+  const prod = turbineProductionMwh(day);
+  const exp = feederExportMwh(day);
+  const cons = prod - exp;
+
+  const perTurbine = useMemo(() => {
+    return TURBINES.map((t) => {
+      const c = turbineRowComputed(day, t);
+      const gasM3 = gasForTurbine(c.diff, c.mwPerHr);
+      return { t, ...c, gasM3 };
+    });
+  }, [day]);
+
+  const totalGasM3 = perTurbine.reduce((a, r) => a + r.gasM3, 0);
+  const totalMMscf = m3ToMMscf(totalGasM3);
+
+  return (
+    <div style={{ padding: 16, paddingBottom: 90 }}>
+      <HeaderBar
+        title="Calculations"
+        dateKey={dateKey}
+        setDateKey={setDateKey}
+        onReset={resetDay}
+        onSave={saveDay}
+      />
+
+      <Card title="Energy Summary">
+        <div style={{ display: "grid", gap: 12 }}>
+          <MiniStat label="Production" value={`${format2(prod)} MW`} />
+          <MiniStat label="Export" value={`${format2(exp)} MW`} />
+          <MiniStat
+            label="Consumption"
+            value={`${format2(cons)} MW`}
+            highlight
+          />
+        </div>
+      </Card>
+
+      <Card title="Gas Consumption by Turbine">
+        <div
+          style={{
+            background: "#f8fafc",
+            border: "1px solid #eef2f7",
+            borderRadius: 14,
+            padding: 12,
+            color: "#344054",
+            lineHeight: 1.6,
+            fontWeight: 700,
+          }}
+        >
+          <div style={{ fontWeight: 950, marginBottom: 6 }}>Gas Consumption Formula:</div>
+          <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }}>
+            IF(MW/h≤3; Production×1000; IF(MW/h≤5; Production×700; IF(MW/h≤8; Production×500; IF(MW/h&gt;8; Production×420))))
+          </div>
+          <ul style={{ margin: "8px 0 0 18px" }}>
+            <li>If MW/h ≤ 3: Production × 1000</li>
+            <li>If MW/h ≤ 5: Production × 700</li>
+            <li>If MW/h ≤ 8: Production × 500</li>
+            <li>If MW/h &gt; 8: Production × 420</li>
+          </ul>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          {perTurbine.map((r) => (
+            <div
+              key={r.t}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "10px 2px",
+                borderBottom: "1px solid #eef2f7",
+                color: "#344054",
+                fontWeight: 850,
+              }}
+            >
+              <span>
+                Turbine {r.t} ({format2(r.mwPerHr)} MW/h)
+              </span>
+              <span>{format2(r.gasM3)} m³</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Total Gas Consumption">
+        <div
+          style={{
+            background: "#f3f8ff",
+            border: "1px solid #b2ddff",
+            borderRadius: 14,
+            padding: 14,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 950 }}>
+            <span>Total Gas</span>
+            <span>{format2(totalGasM3)} m³</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 950 }}>
+            <span>Total Gas (MMscf)</span>
+            <span>{format4(totalMMscf)} MMscf</span>
+          </div>
+        </div>
+
+        <button
+          onClick={saveDay}
+          style={{
+            marginTop: 14,
+            width: "100%",
+            border: "none",
+            borderRadius: 14,
+            padding: "14px 14px",
+            background: "#1f6feb",
+            color: "white",
+            fontWeight: 950,
+            fontSize: 16,
+            cursor: "pointer",
+          }}
+        >
+          💾 Save All Data
+        </button>
+
+        <button
+          onClick={resetDay}
+          style={{
+            marginTop: 10,
+            width: "100%",
+            border: "none",
+            borderRadius: 14,
+            padding: "14px 14px",
+            background: "#f04438",
+            color: "white",
+            fontWeight: 950,
+            fontSize: 16,
+            cursor: "pointer",
+          }}
+        >
+          ↻ Reset All Values
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+function ReportsTab({ day, dateKey, setDateKey }) {
+  const prod = turbineProductionMwh(day);
+  const exp = feederExportMwh(day);
+  const cons = prod - exp;
+
+  const perTurbine = TURBINES.map((t) => {
+    const c = turbineRowComputed(day, t);
+    const gasM3 = gasForTurbine(c.diff, c.mwPerHr);
+    return { t, gasM3 };
+  });
+  const totalGasM3 = perTurbine.reduce((a, r) => a + r.gasM3, 0);
+
+  const idx = getDayIndex();
+  const mk = monthKey(dateKey);
+  const monthDays = idx.filter((d) => d.startsWith(mk));
+
+  const monthlyTotals = useMemo(() => {
+    let totalProd = 0;
+    let totalExp = 0;
+    let totalCons = 0;
+    let totalGas = 0;
+
+    for (const d of monthDays) {
+      const raw = localStorage.getItem(storageKey(d));
+      if (!raw) continue;
+      const dd = safeJsonParse(raw, null);
+      if (!dd) continue;
+      const p = turbineProductionMwh(dd);
+      const e = feederExportMwh(dd);
+      const c = p - e;
+      const perT = TURBINES.map((t) => {
+        const tc = turbineRowComputed(dd, t);
+        return gasForTurbine(tc.diff, tc.mwPerHr);
+      }).reduce((a, v) => a + v, 0);
+
+      totalProd += p;
+      totalExp += e;
+      totalCons += c;
+      totalGas += perT;
+    }
+    return { totalProd, totalExp, totalCons, totalGas, daysRecorded: monthDays.length };
+  }, [monthDays]);
+
+  const exportAllData = () => {
+    const all = idx.map((d) => {
+      const raw = localStorage.getItem(storageKey(d));
+      return raw ? { dateKey: d, data: safeJsonParse(raw, null) } : null;
+    }).filter(Boolean);
+
+    const payload = {
+      app: "pp-app",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      days: all,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `powerplant-export-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const payload = safeJsonParse(String(reader.result || ""), null);
+        if (!payload?.days) {
+          alert("الملف غير صحيح");
+          return;
+        }
+        payload.days.forEach((item) => {
+          if (item?.data?.dateKey) {
+            localStorage.setItem(storageKey(item.data.dateKey), JSON.stringify(item.data));
+            upsertDayIndex(item.data.dateKey);
+          }
+        });
+        alert("تم الاستيراد بنجاح ✅");
+        window.location.reload();
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  const copyDaySummary = () => {
+    const text =
+      `Daily Summary - ${dateKey}\n` +
+      `Production: ${format2(prod)} MW\n` +
+      `Export: ${format2(exp)} MW\n` +
+      `Consumption: ${format2(cons)} MW\n` +
+      `Total Gas: ${format2(totalGasM3)} m³\n`;
+    navigator.clipboard?.writeText(text);
+    alert("تم نسخ الملخص ✅");
+  };
+
+  return (
+    <div style={{ padding: 16, paddingBottom: 90 }}>
+      <HeaderBar title="Reports" dateKey={dateKey} setDateKey={setDateKey} />
+
+      <Card title="Current Day Summary">
+        <div style={{ display: "grid", gap: 10 }}>
+          <MiniStat label="Date" value={dateKey} />
+          <MiniStat label="Production" value={`${format2(prod)} MW`} />
+          <MiniStat label="Export" value={`${format2(exp)} MW`} />
+          <MiniStat label="Consumption" value={`${format2(cons)} MW`} />
+        </div>
+
+        <button
+          onClick={copyDaySummary}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            border: "none",
+            borderRadius: 14,
+            padding: "12px 14px",
+            background: "#1f6feb",
+            color: "white",
+            fontWeight: 950,
+            cursor: "pointer",
+          }}
+        >
+          📋 Copy Summary
+        </button>
+      </Card>
+
+      <Card title="Monthly Statistics">
+        <div style={{ display: "grid", gap: 10 }}>
+          <MiniStat label="Days Recorded" value={`${monthlyTotals.daysRecorded}`} />
+          <MiniStat label="Total Production" value={`${format2(monthlyTotals.totalProd)} MW`} />
+          <MiniStat label="Total Export" value={`${format2(monthlyTotals.totalExp)} MW`} />
+          <MiniStat label="Total Consumption" value={`${format2(monthlyTotals.totalCons)} MW`} />
+          <MiniStat label="Total Gas Used" value={`${format2(monthlyTotals.totalGas)} m³`} />
+        </div>
+
+        <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+          <button
+            onClick={() => alert("History: استخدم Export/Import حالياً. نضيف شاشة History بالتحديث القادم.")}
+            style={{
+              flex: 1,
+              border: "none",
+              borderRadius: 14,
+              padding: "12px 14px",
+              background: "#1f6feb",
+              color: "white",
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+          >
+            📅 View History
+          </button>
+          <button
+            onClick={exportAllData}
+            style={{
+              flex: 1,
+              border: "none",
+              borderRadius: 14,
+              padding: "12px 14px",
+              background: "#1f6feb",
+              color: "white",
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+          >
+            ⬇ Export Data
+          </button>
+        </div>
+      </Card>
+
+      <Card title="Quick Actions">
+        <div style={{ display: "grid", gap: 10 }}>
+          <button
+            onClick={() => alert("Generate Monthly Report: نضيف PDF/Excel لاحقاً.")}
+            style={{
+              width: "100%",
+              border: "1px solid #eef2f7",
+              borderRadius: 14,
+              padding: "14px 14px",
+              background: "white",
+              fontWeight: 900,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            🧾 Generate Monthly Report
+          </button>
+          <button
+            onClick={() => alert("Generate Annual Report: نضيف PDF/Excel لاحقاً.")}
+            style={{
+              width: "100%",
+              border: "1px solid #eef2f7",
+              borderRadius: 14,
+              padding: "14px 14px",
+              background: "white",
+              fontWeight: 900,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            🧾 Generate Annual Report
+          </button>
+
+          <button
+            onClick={importData}
+            style={{
+              width: "100%",
+              border: "1px solid #eef2f7",
+              borderRadius: 14,
+              padding: "14px 14px",
+              background: "#f8fafc",
+              fontWeight: 900,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            ⬆ Import Data (JSON)
+          </button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+export default function App() {
+  const [tab, setTab] = useState("feeders");
+  const [dateKey, setDateKey] = useState(todayKey());
+
+  const [day, setDay] = useState(() => {
+    const raw = localStorage.getItem(storageKey(todayKey()));
+    return raw ? safeJsonParse(raw, defaultDay(todayKey())) : defaultDay(todayKey());
+  });
+
+  // load when date changes
+  useEffect(() => {
+    const raw = localStorage.getItem(storageKey(dateKey));
+    setDay(raw ? safeJsonParse(raw, defaultDay(dateKey)) : defaultDay(dateKey));
+  }, [dateKey]);
+
+  const saveDay = () => {
+    localStorage.setItem(storageKey(dateKey), JSON.stringify({ ...day, dateKey }));
+    upsertDayIndex(dateKey);
+    alert("تم الحفظ ✅");
+  };
+
+  const resetDay = () => {
+    const fresh = defaultDay(dateKey);
+    setDay(fresh);
+    localStorage.setItem(storageKey(dateKey), JSON.stringify(fresh));
+    upsertDayIndex(dateKey);
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f6f9ff",
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
+      }}
+    >
+      {tab === "feeders" ? (
+        <FeedersTab
+          day={day}
+          setDay={setDay}
+          dateKey={dateKey}
+          setDateKey={setDateKey}
+          saveDay={saveDay}
+          resetDay={resetDay}
+        />
+      ) : null}
+
+      {tab === "turbines" ? (
+        <TurbinesTab
+          day={day}
+          setDay={setDay}
+          dateKey={dateKey}
+          setDateKey={setDateKey}
+          saveDay={saveDay}
+          resetDay={resetDay}
+        />
+      ) : null}
+
+      {tab === "calc" ? (
+        <CalculationsTab
+          day={day}
+          dateKey={dateKey}
+          setDateKey={setDateKey}
+          saveDay={saveDay}
+          resetDay={resetDay}
+        />
+      ) : null}
+
+      {tab === "reports" ? (
+        <ReportsTab day={day} dateKey={dateKey} setDateKey={setDateKey} />
+      ) : null}
+
+      {/* Bottom Tabs */}
+      <div
+        style={{
+          position: "fixed",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "white",
+          borderTop: "1px solid #eef2f7",
+          display: "flex",
+          paddingBottom: 8,
+        }}
+      >
+        <TabButton
+          active={tab === "feeders"}
+          icon="🏠"
+          label="Feeders"
+          onClick={() => setTab("feeders")}
+        />
+        <TabButton
+          active={tab === "turbines"}
+          icon="⚡"
+          label="Turbines"
+          onClick={() => setTab("turbines")}
+        />
+        <TabButton
+          active={tab === "calc"}
+          icon="🧮"
+          label="Calculations"
+          onClick={() => setTab("calc")}
+        />
+        <TabButton
+          active={tab === "reports"}
+          icon="📊"
+          label="Reports"
+          onClick={() => setTab("reports")}
+        />
+      </div>
+    </div>
+  );
+}

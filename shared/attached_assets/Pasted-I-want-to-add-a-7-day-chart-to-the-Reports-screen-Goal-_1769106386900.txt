@@ -1,0 +1,48 @@
+I want to add a 7-day chart to the Reports screen.
+
+Goal:
+Show a chart built from the latest saved readings for the last 7 days (including today if available). It must combine these variables per day:
+- Production
+- Consumption
+- Export OR Withdrawal (dynamic: use the same mode/label logic we already have; do NOT break it)
+- Gas Consumed
+
+Data:
+- Use the same stored daily records the app already uses for Reports/Feeders/Calculations.
+- “Last 7 days” means the most recent 7 days that have data. If there are fewer than 7 saved days, show what exists and display an empty-state message if none.
+- Ensure correct sign/formatting for values (negative sign must appear before the number in Arabic too).
+
+UI/UX requirements:
+1) Add a section at the top of Reports called:
+   - en: "Last 7 Days"
+   - ar: "آخر 7 أيام"
+2) Chart type:
+   - Prefer a clean combined chart:
+     - Lines for Production and Consumption
+     - Bars for Export/Withdrawal and Gas Consumed
+   - If a combined chart is too complex with the current setup, use a multi-line chart (4 lines) as a fallback.
+3) X-axis: day labels (e.g., Jan 21 or 21/01). Respect locale.
+4) Y-axis: numeric scale; handle different magnitudes reasonably (if needed, use two y-axes or normalize, but keep it readable).
+5) Legend:
+   - Production
+   - Consumption
+   - Export/Withdrawal (dynamic label + translation; withdrawal in red like the rest of the app)
+   - Gas Consumed
+6) Localization:
+   - All new text must be translatable (t("...")) in English and Arabic.
+   - RTL layout must look correct in Arabic (alignment and ordering).
+7) Performance:
+   - Memoize the last-7-days data transformation.
+   - Do not recompute on every render unnecessarily.
+
+Implementation constraints:
+- Prefer using an existing chart dependency already in the project.
+- If no chart library exists, add the lightest Expo-friendly option (e.g., react-native-svg + a minimal chart solution) and keep changes minimal.
+- Do NOT change existing calculation logic or the current withdrawal/export labeling behavior.
+- Modify only the necessary files: Reports screen + any shared data selector/helper + translation files.
+
+Deliverables:
+- Exact file paths changed
+- Code diff
+- Short explanation of how the last 7 days data is selected and mapped to the chart
+- Screenshots are not required, but the code must compile and run in Expo/dev build
