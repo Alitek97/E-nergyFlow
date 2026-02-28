@@ -11,7 +11,6 @@ export const UNITS = {
   energy: "MWh", 
   energyLarge: "GWh",
   gasM3: "m³",
-  gasMMscf: "MMscf",
 } as const;
 
 interface ValueWithUnitProps {

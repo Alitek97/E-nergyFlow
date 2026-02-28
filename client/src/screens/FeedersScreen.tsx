@@ -16,6 +16,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
+import { FeederCode } from "@/components/FeederCode";
 import { NumberText } from "@/components/NumberText";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import { NumericInputField } from "@/components/NumericInputField";
@@ -283,20 +284,14 @@ export default function FeedersScreen() {
                   <View style={[styles.feederLabelRow, rtlRow]}>
                     <View style={[styles.feederTitleGroup, isRTL && styles.feederTitleGroupRTL]}>
                       <View style={[styles.feederBadge, { backgroundColor: theme.primary + "20" }]}>
-                        <ThemedText semanticVariant="labelPrimary" style={{ color: theme.primary }}>
-                          {f}
-                        </ThemedText>
+                        <FeederCode code={f} style={[styles.feederBadgeCode, { color: theme.primary }]} />
                       </View>
-                      <ThemedText
-                        semanticVariant="labelSecondary"
-                        numberOfLines={1}
-                        style={[
-                          styles.feederLabel,
-                          ["F2", "F3", "F4", "F5"].includes(f) && { fontSize: 16, lineHeight: 22, minHeight: 24 },
-                        ]}
-                      >
-                        {t("feeder")} {f}
-                      </ThemedText>
+                      <View style={[styles.feederLabel, styles.feederLabelTextRow, isRTL && styles.feederLabelTextRowRTL]}>
+                        <ThemedText semanticVariant="labelSecondary" numberOfLines={1} style={styles.feederLabelText}>
+                          {t("feeder")}
+                        </ThemedText>
+                        <FeederCode code={f} style={[styles.feederInlineCode, isRTL && styles.feederInlineCodeRTL]} />
+                      </View>
                     </View>
                   </View>
 
@@ -442,9 +437,7 @@ export default function FeedersScreen() {
                   ]}
                 >
                   <View style={[styles.feederBadgeSmall, { backgroundColor: theme.primary + "20" }]}>
-                    <ThemedText semanticVariant="labelPrimary" style={{ color: theme.primary }}>
-                      {r.f}
-                    </ThemedText>
+                    <FeederCode code={r.f} style={[styles.feederBadgeCodeSmall, { color: theme.primary }]} />
                   </View>
                   <View style={[styles.summaryValues, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
                     {summaryCells.map((cell) => (
@@ -555,6 +548,33 @@ const styles = StyleSheet.create({
   feederLabel: {
     flex: 1,
     minWidth: 0,
+  },
+  feederLabelTextRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  feederLabelTextRowRTL: {
+    flexDirection: "row-reverse",
+  },
+  feederLabelText: {
+    flexShrink: 1,
+  },
+  feederInlineCode: {
+    marginLeft: Spacing.xs,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  feederInlineCodeRTL: {
+    marginLeft: 0,
+    marginRight: Spacing.xs,
+  },
+  feederBadgeCode: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  feederBadgeCodeSmall: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   copyArrowButton: {
     width: 28,

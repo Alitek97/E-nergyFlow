@@ -19,6 +19,7 @@ import { DayProvider } from "@/contexts/DayContext";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider, useThemeMode } from "@/contexts/ThemeContext";
+import { UnitsProvider } from "@/contexts/UnitsContext";
 import { AuthScreen } from "@/screens/AuthScreen";
 import { getFontFamilyForText, typography } from "@/theme/typography";
 import { loadFonts } from "@/theme/fonts";
@@ -144,9 +145,11 @@ export default function App() {
         <ErrorBoundary>
           <ToastProvider>
             <LanguageProvider>
-              <AuthProvider>
-                <AppContent />
-              </AuthProvider>
+              <UnitsProvider>
+                <AuthProvider>
+                  <AppContent />
+                </AuthProvider>
+              </UnitsProvider>
             </LanguageProvider>
           </ToastProvider>
         </ErrorBoundary>

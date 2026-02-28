@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { NumberText } from "@/components/NumberText";
+import { FeederCode } from "@/components/FeederCode";
 import { ThemedText } from "@/components/ThemedText";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -19,6 +20,7 @@ import { useTheme } from "@/hooks/useTheme";
 interface HoursPickerSheetProps {
   visible: boolean;
   value: string;
+  turbineLabel?: string;
   onCancel: () => void;
   onDone: (value: string) => void;
 }
@@ -37,9 +39,9 @@ function clampHour(value: string): number {
   return parsed;
 }
 
-export function HoursPickerSheet({ visible, value, onCancel, onDone }: HoursPickerSheetProps) {
+export function HoursPickerSheet({ visible, value, turbineLabel, onCancel, onDone }: HoursPickerSheetProps) {
   const { theme } = useTheme();
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, language } = useLanguage();
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<number>>(null);
   const [draftHour, setDraftHour] = useState<number>(clampHour(value));
@@ -61,7 +63,20 @@ export function HoursPickerSheet({ visible, value, onCancel, onDone }: HoursPick
 
   const selectedIndex = draftHour - 1;
 
-  const titleText = useMemo(() => t("hours_picker_title"), [t]);
+  const titlePrefix = useMemo(() => {
+    if (!turbineLabel) return null;
+    if (language === "ar") {
+      return "عدد ساعات التشغيل للتوربين";
+    }
+    return `Operating Hours for ${t("turbine")}`;
+  }, [language, t, turbineLabel]);
+
+  const fixedUnitLabel = useMemo(() => {
+    if (language === "ar") {
+      return draftHour === 1 ? "ساعة" : "ساعات";
+    }
+    return t("hours");
+  }, [draftHour, language, t]);
 
   const commitScrollSelection = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetY = event.nativeEvent.contentOffset.y;
@@ -96,63 +111,83 @@ export function HoursPickerSheet({ visible, value, onCancel, onDone }: HoursPick
           ]}
         >
           <ThemedText semanticVariant="sectionTitle" style={[styles.title, { color: theme.text }]}>
-            {titleText}
+            {turbineLabel && titlePrefix ? (
+              <>
+                {titlePrefix} <FeederCode code={turbineLabel} />
+              </>
+            ) : (
+              t("hours_picker_title")
+            )}
           </ThemedText>
 
           <View style={[styles.pickerShell, { borderColor: theme.border, backgroundColor: theme.backgroundSecondary }]}>
-            <View
-              pointerEvents="none"
-              style={[
-                styles.selectionFrame,
-                {
-                  borderColor: theme.primary + "55",
-                  backgroundColor: theme.primary + "10",
-                },
-              ]}
-            />
-            <FlatList
-              ref={listRef}
-              data={HOURS_VALUES}
-              keyExtractor={(item) => String(item)}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-              snapToInterval={ITEM_HEIGHT}
-              decelerationRate="fast"
-              contentContainerStyle={styles.pickerContent}
-              getItemLayout={(_, index) => ({
-                length: ITEM_HEIGHT,
-                offset: ITEM_HEIGHT * index,
-                index,
-              })}
-              onMomentumScrollEnd={commitScrollSelection}
-              onScrollEndDrag={commitScrollSelection}
-              renderItem={({ item, index }) => {
-                const isSelected = index === selectedIndex;
-                return (
-                  <Pressable style={styles.item} onPress={() => handlePressHour(item)}>
-                    <View style={[styles.itemContent, isRTL && styles.itemContentRTL]}>
-                      <ThemedText
-                        semanticVariant="labelSecondary"
-                        numberOfLines={1}
-                        style={[
-                          styles.itemLabel,
-                          { color: isSelected ? theme.primary : theme.textSecondary },
-                        ]}
-                      >
-                        {t("hours")}
-                      </ThemedText>
-                      <NumberText
-                        size="lg"
-                        weight={isSelected ? "bold" : "regular"}
-                        style={{ color: isSelected ? theme.text : theme.textSecondary }}
-                      >
-                        {String(item)}
-                      </NumberText>
-                    </View>
-                  </Pressable>
-                );
-              }}
-            />
+            <View style={[styles.pickerBody, isRTL && styles.pickerBodyRTL]}>
+              <View style={styles.numberColumn}>
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.selectionFrame,
+                    {
+                      borderColor: theme.primary + "55",
+                      backgroundColor: theme.primary + "10",
+                    },
+                  ]}
+                />
+                <FlatList
+                  ref={listRef}
+                  data={HOURS_VALUES}
+                  keyExtractor={(item) => String(item)}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  snapToInterval={ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  contentContainerStyle={styles.pickerContent}
+                  getItemLayout={(_, index) => ({
+                    length: ITEM_HEIGHT,
+                    offset: ITEM_HEIGHT * index,
+                    index,
+                  })}
+                  onMomentumScrollEnd={commitScrollSelection}
+                  onScrollEndDrag={commitScrollSelection}
+                  renderItem={({ item, index }) => {
+                    const isSelected = index === selectedIndex;
+                    return (
+                      <Pressable style={styles.item} onPress={() => handlePressHour(item)}>
+                        <NumberText
+                          size="lg"
+                          weight={isSelected ? "bold" : "regular"}
+                          style={[styles.itemNumber, { color: isSelected ? theme.text : theme.textSecondary }]}
+                        >
+                          {String(item)}
+                        </NumberText>
+                      </Pressable>
+                    );
+                  }}
+                />
+              </View>
+
+              <View
+                style={[
+                  styles.fixedUnitPanel,
+                  {
+                    borderColor: theme.border,
+                    borderLeftWidth: isRTL ? 0 : StyleSheet.hairlineWidth,
+                    borderRightWidth: isRTL ? StyleSheet.hairlineWidth : 0,
+                  },
+                ]}
+              >
+                <ThemedText
+                  semanticVariant="labelSecondary"
+                  numberOfLines={1}
+                  style={[
+                    styles.fixedUnitText,
+                    { color: theme.textSecondary, textAlign: "center" },
+                  ]}
+                >
+                  {fixedUnitLabel}
+                </ThemedText>
+              </View>
+            </View>
           </View>
 
           <View style={[styles.actionsRow, isRTL && styles.actionsRowRTL]}>
@@ -206,6 +241,17 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     overflow: "hidden",
+  },
+  pickerBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  pickerBodyRTL: {
+    flexDirection: "row-reverse",
+  },
+  numberColumn: {
+    flex: 1,
     position: "relative",
   },
   pickerContent: {
@@ -226,16 +272,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: Spacing.md,
   },
-  itemContent: {
-    flexDirection: "row",
+  itemNumber: {
+    textAlign: "center",
+  },
+  fixedUnitPanel: {
+    width: 86,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    paddingHorizontal: Spacing.xs,
   },
-  itemContentRTL: {
-    flexDirection: "row-reverse",
-  },
-  itemLabel: {
+  fixedUnitText: {
+    minWidth: 54,
   },
   actionsRow: {
     flexDirection: "row",

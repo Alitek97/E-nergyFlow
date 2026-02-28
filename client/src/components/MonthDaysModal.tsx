@@ -15,9 +15,9 @@ import { ThemedText } from "./ThemedText";
 import { NumberText } from "./NumberText";
 import { useTheme } from "@/hooks/useTheme";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useUnits } from "@/contexts/UnitsContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { Spacing, BorderRadius, Typography } from "@/constants/theme";
-import { format2 } from "@/lib/storage";
+import { Spacing, BorderRadius } from "@/constants/theme";
 import { getFlowLabelAndStyle } from "@/lib/flowLabel";
 import {
   DaySummary,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/supabaseSync";
 import { showSuccess, showError } from "@/utils/notify";
 import { deleteDayData } from "@/lib/storage";
+import { formatEnergy } from "@/utils/units";
 
 interface MonthDaysModalProps {
   visible: boolean;
@@ -42,6 +43,7 @@ export function MonthDaysModal({
 }: MonthDaysModalProps) {
   const { theme } = useTheme();
   const { t, isRTL } = useLanguage();
+  const { unitsConfig } = useUnits();
   const { user } = useAuth();
 
   const [days, setDays] = useState<DaySummary[]>([]);
@@ -208,6 +210,8 @@ export function MonthDaysModal({
             >
               {days.map((day) => {
                 const isDeleting = deletingId === day.id;
+                const productionText = formatEnergy(day.production, unitsConfig, { prefer: "fixed" });
+                const flowText = formatEnergy(Math.abs(day.exportVal), unitsConfig, { prefer: "fixed" });
                 return (
                   <View
                     key={day.id}
@@ -235,8 +239,8 @@ export function MonthDaysModal({
                             {t("production")}:
                           </ThemedText>
                           <View style={styles.dayStatValueRow}>
-                            <NumberText size="small">{format2(day.production)}</NumberText>
-                            <ThemedText semanticVariant="unit">{t("mwh")}</ThemedText>
+                            <NumberText size="small">{productionText.valueText}</NumberText>
+                            <ThemedText semanticVariant="unit">{productionText.unitText}</ThemedText>
                           </View>
                         </View>
                         {(() => {
@@ -258,10 +262,10 @@ export function MonthDaysModal({
                               </ThemedText>
                               <View style={styles.dayStatValueRow}>
                                 <NumberText size="small" style={{ color: flowStyle.color }}>
-                                  {format2(Math.abs(day.exportVal))}
+                                  {flowText.valueText}
                                 </NumberText>
                                 <ThemedText semanticVariant="unit" style={{ color: flowStyle.color }}>
-                                  {t("mwh")}
+                                  {flowText.unitText}
                                 </ThemedText>
                               </View>
                             </View>

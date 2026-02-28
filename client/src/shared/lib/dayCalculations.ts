@@ -25,7 +25,6 @@ export interface TurbineGasRow {
   isStopped: boolean;
   hasError: boolean;
   gasM3: number;
-  gasMMscf: number;
 }
 
 export interface CalculationsSummary {
@@ -34,7 +33,6 @@ export interface CalculationsSummary {
   consumption: number;
   turbineData: TurbineGasRow[];
   totalGasM3: number;
-  totalGasMMscf: number;
 }
 
 export function computeDayStats(day: DayData): DayStats {
@@ -65,17 +63,14 @@ export function computeCalculationsSummary(day: DayData): CalculationsSummary {
   const turbineData = TURBINES.map((t) => {
     const computed = turbineRowComputed(day, t);
     const gasM3 = gasForTurbine(computed.diff, computed.mwPerHr);
-    const gasMMscf = (gasM3 * 35.3146667) / 1_000_000;
     return {
       t,
       ...computed,
       gasM3,
-      gasMMscf,
     };
   });
 
   const totalGasM3 = turbineData.reduce((a, r) => a + r.gasM3, 0);
-  const totalGasMMscf = turbineData.reduce((a, r) => a + r.gasMMscf, 0);
 
   return {
     production,
@@ -83,6 +78,5 @@ export function computeCalculationsSummary(day: DayData): CalculationsSummary {
     consumption,
     turbineData,
     totalGasM3,
-    totalGasMMscf,
   };
 }

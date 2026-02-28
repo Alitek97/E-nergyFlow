@@ -12,7 +12,8 @@ import PressableScale from "@/components/ui/PressableScale";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
@@ -24,19 +25,19 @@ import { ThemedText } from "@/components/ThemedText";
 import { NumberText } from "@/components/NumberText";
 import { SevenDayChart } from "@/components/SevenDayChart";
 import { MonthDaysModal } from "@/components/MonthDaysModal";
-import { ValueWithUnit, UNITS } from "@/components/ValueWithUnit";
+import { ValueWithUnit } from "@/components/ValueWithUnit";
 import { useTheme } from "@/hooks/useTheme";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Spacing, BorderRadius, Typography } from "@/constants/theme";
 import { useDay } from "@/contexts/DayContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
 import { getFlowLabelAndStyle } from "@/lib/flowLabel";
 import {
   DayData,
   getAllDaysData,
   exportAllData,
-  format2,
 } from "@/lib/storage";
 import { generateExcelReport, generateTextReport } from "@/lib/excelExport";
 import { computeDayStats } from "@/shared/lib/dayCalculations";
@@ -47,6 +48,10 @@ import {
   fetchSingleMonthFromSupabase,
   fetchRecentDaysFullFromSupabase,
 } from "@/lib/supabaseSync";
+import type { ReportsStackParamList } from "@/navigation/ReportsStackNavigator";
+import { formatEnergy } from "@/utils/units";
+
+type ReportsNavigation = NativeStackNavigationProp<ReportsStackParamList, "Reports">;
 
 export default function ReportsScreen() {
   const renderCountRef = useRef(0);
@@ -62,8 +67,10 @@ export default function ReportsScreen() {
   const layout = useResponsiveLayout();
   const { dateKey, day } = useDay();
   const { language, t, isRTL } = useLanguage();
+  const { unitsConfig } = useUnits();
   const { rtlRow, rtlText } = useRTL();
   const { user } = useAuth();
+  const navigation = useNavigation<ReportsNavigation>();
 
   const [allDays, setAllDays] = useState<DayData[]>([]);
   const [currentMonthStats, setCurrentMonthStats] = useState<MonthSummary | null>(null);
@@ -277,6 +284,9 @@ export default function ReportsScreen() {
 
   const renderMonthCard = (stats: MonthSummary, isCurrentMonth: boolean = false) => {
     const flowStyle = getFlowLabelAndStyle(stats.totalExport >= 0, t, theme);
+    const productionText = formatEnergy(stats.totalProduction, unitsConfig, { prefer: "auto" });
+    const flowText = formatEnergy(Math.abs(stats.totalExport), unitsConfig, { prefer: "auto" });
+    const consumptionText = formatEnergy(stats.totalConsumption, unitsConfig, { prefer: "auto" });
     
     return (
       <Pressable
@@ -320,8 +330,8 @@ export default function ReportsScreen() {
               {t("production")}
             </ThemedText>
             <ValueWithUnit 
-              value={format2(stats.totalProduction / 1000)} 
-              unit={UNITS.energyLarge}
+              value={productionText.valueText}
+              unit={productionText.unitText}
               unitStyle={{ color: theme.textSecondary }}
             />
           </View>
@@ -331,8 +341,8 @@ export default function ReportsScreen() {
               {flowStyle.text}
             </ThemedText>
             <ValueWithUnit 
-              value={format2(Math.abs(stats.totalExport) / 1000)} 
-              unit={UNITS.energyLarge}
+              value={flowText.valueText}
+              unit={flowText.unitText}
               valueStyle={{ color: flowStyle.color }}
               unitStyle={{ color: theme.textSecondary }}
             />
@@ -343,8 +353,9 @@ export default function ReportsScreen() {
               {t("consumption")}
             </ThemedText>
             <ValueWithUnit 
-              value={format2(stats.totalConsumption / 1000)} 
-              unit={UNITS.energyLarge}
+              value={consumptionText.valueText}
+              unit={consumptionText.unitText}
+              valueStyle={{ color: theme.warning }}
               unitStyle={{ color: theme.textSecondary }}
             />
           </View>
@@ -457,8 +468,8 @@ export default function ReportsScreen() {
                   {t("production")}
                 </ThemedText>
                 <ValueWithUnit 
-                  value={format2(currentDayStats.production)} 
-                  unit={UNITS.energy}
+                  value={formatEnergy(currentDayStats.production, unitsConfig, { prefer: "fixed" }).valueText}
+                  unit={formatEnergy(currentDayStats.production, unitsConfig, { prefer: "fixed" }).unitText}
                   type="h3"
                   valueStyle={{ color: theme.success }}
                   unitStyle={{ color: theme.textSecondary }}
@@ -473,8 +484,8 @@ export default function ReportsScreen() {
                   {currentFlowStyle.text}
                 </ThemedText>
                 <ValueWithUnit 
-                  value={format2(Math.abs(currentDayStats.exportVal))} 
-                  unit={UNITS.energy}
+                  value={formatEnergy(Math.abs(currentDayStats.exportVal), unitsConfig, { prefer: "fixed" }).valueText}
+                  unit={formatEnergy(Math.abs(currentDayStats.exportVal), unitsConfig, { prefer: "fixed" }).unitText}
                   type="h3"
                   valueStyle={{ color: currentFlowStyle.color }}
                   unitStyle={{ color: theme.textSecondary }}
@@ -489,8 +500,8 @@ export default function ReportsScreen() {
                   {t("consumption")}
                 </ThemedText>
                 <ValueWithUnit 
-                  value={format2(currentDayStats.consumption)} 
-                  unit={UNITS.energy}
+                  value={formatEnergy(currentDayStats.consumption, unitsConfig, { prefer: "fixed" }).valueText}
+                  unit={formatEnergy(currentDayStats.consumption, unitsConfig, { prefer: "fixed" }).unitText}
                   type="h3"
                   valueStyle={{ color: theme.warning }}
                   unitStyle={{ color: theme.textSecondary }}
@@ -530,7 +541,7 @@ export default function ReportsScreen() {
           <Animated.View entering={FadeInDown.delay(300).duration(300)}>
             <Pressable
               style={[styles.accordionHeader, rtlRow, { backgroundColor: theme.backgroundDefault }]}
-              onPress={handleTogglePreviousMonths}
+              onPress={() => navigation.navigate("MonthsScreen")}
             >
               <View style={[styles.accordionTitleRow, rtlRow, { gap: Spacing.md }]}>
                 <View style={[styles.iconCircle, { backgroundColor: theme.textSecondary + "20" }]}>
@@ -550,20 +561,8 @@ export default function ReportsScreen() {
                   </View>
                 </View>
               </View>
-              <Animated.View style={chevronStyle}>
-                <Feather name="chevron-down" size={20} color={theme.textSecondary} />
-              </Animated.View>
+              <Feather name={isRTL ? "chevron-left" : "chevron-right"} size={20} color={theme.textSecondary} />
             </Pressable>
-
-            {previousMonthsExpanded && (
-              <Animated.View entering={FadeIn.duration(200)} style={styles.previousMonthsContainer}>
-                {previousMonthsList.map((item) => (
-                  <View key={item.month}>
-                    {renderPreviousMonthItem(item)}
-                  </View>
-                ))}
-              </Animated.View>
-            )}
           </Animated.View>
         )}
 

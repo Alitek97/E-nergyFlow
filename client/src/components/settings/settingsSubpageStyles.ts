@@ -1,0 +1,17 @@
+export const SETTINGS_SUBPAGE_SIZES = {
+  contentMaxWidth: 560,
+  horizontalPadding: 16,
+  topSpacing: 16,
+  bottomSpacing: 24,
+  cardRadius: 20,
+  rowMinHeight: 66,
+  rowVerticalPadding: 15,
+  iconContainerSize: 36,
+  avatarSize: 42,
+  rowTitleSize: 17,
+  rowSubtitleSize: 14,
+  inputHeight: 48,
+  inputFontSize: 17,
+  saveButtonMinHeight: 36,
+  saveButtonHorizontalPadding: 16,
+} as const;

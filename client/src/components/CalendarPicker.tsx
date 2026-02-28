@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, I18nManager, Text, Platform } from "react-native";
 import PressableScale from "@/components/ui/PressableScale";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -10,6 +10,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { formatDateKey } from "@/lib/storage";
+import { FONT_FAMILIES } from "@/theme/fonts";
 
 interface CalendarPickerProps {
   selectedDate: string;
@@ -27,12 +28,23 @@ function getDayLetter(dateStr: string): string {
   return letters[index];
 }
 
+function getTitleFontFamily(isRTL: boolean): string {
+  if (isRTL) {
+    return FONT_FAMILIES.arabicSemiBold;
+  }
+  return Platform.select({
+    ios: "System",
+    android: "sans-serif",
+    default: "sans-serif",
+  }) as string;
+}
+
 export function CalendarPicker({ selectedDate, onSelectDate, onClose }: CalendarPickerProps) {
   const { theme } = useTheme();
   const { t, isRTL } = useLanguage();
+  const isTitleRTL = I18nManager.isRTL || isRTL;
 
   const WEEKDAYS = [t("cal_sun"), t("cal_mon"), t("cal_tue"), t("cal_wed"), t("cal_thu"), t("cal_fri"), t("cal_sat")];
-  const MONTHS = [t("cal_january"), t("cal_february"), t("cal_march"), t("cal_april"), t("cal_may"), t("cal_june"), t("cal_july"), t("cal_august"), t("cal_september"), t("cal_october"), t("cal_november"), t("cal_december")];
   
   const currentDate = useMemo(() => {
     const d = new Date(selectedDate);
@@ -100,6 +112,16 @@ export function CalendarPicker({ selectedDate, onSelectDate, onClose }: Calendar
     return mirrored;
   }, [calendarDays, isRTL]);
 
+  const headerTitleParts = useMemo(() => {
+    const locale = isTitleRTL ? "ar" : "en";
+    const date = new Date(viewYear, viewMonth, 1);
+    const monthText = new Intl.DateTimeFormat(locale, { month: "long" }).format(date);
+    const yearText = isTitleRTL
+      ? new Intl.NumberFormat("ar", { useGrouping: false }).format(viewYear)
+      : new Intl.DateTimeFormat("en", { year: "numeric" }).format(date);
+    return { monthText, yearText };
+  }, [isTitleRTL, viewMonth, viewYear]);
+
   const handlePrevMonth = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (viewMonth === 0) {
@@ -139,25 +161,51 @@ export function CalendarPicker({ selectedDate, onSelectDate, onClose }: Calendar
       <View style={styles.header}>
         <Pressable
           style={[styles.monthNavButton, { backgroundColor: theme.primary + "20" }]}
-          onPress={handlePrevMonth}
+          onPress={isRTL ? handleNextMonth : handlePrevMonth}
         >
-          <Feather name={isRTL ? "chevron-right" : "chevron-left"} size={20} color={theme.primary} />
+          <Feather name="chevron-left" size={20} color={theme.primary} />
         </Pressable>
         <View style={styles.monthYearDisplay}>
-          <View style={styles.monthYearRow}>
-            <ThemedText semanticVariant="sectionTitle" style={{ textAlign: "center" }}>
-              {MONTHS[viewMonth]}
-            </ThemedText>
-            <NumberText size="lg" weight="semibold" style={{ color: theme.text }}>
-              {viewYear}
-            </NumberText>
+          <View style={[styles.monthYearRow, isTitleRTL ? styles.monthYearRowRTL : styles.monthYearRowLTR]}>
+            <Text
+              allowFontScaling={false}
+              style={[
+                styles.calendarHeaderTitleText,
+                { color: theme.text, fontFamily: getTitleFontFamily(isTitleRTL) },
+                isTitleRTL ? styles.calendarHeaderTitleRTL : styles.calendarHeaderTitleLTR,
+              ]}
+            >
+              {headerTitleParts.monthText}
+            </Text>
+            <Text
+              allowFontScaling={false}
+              style={[
+                styles.calendarHeaderTitleText,
+                styles.calendarHeaderTitleSpace,
+                { color: theme.text, fontFamily: getTitleFontFamily(isTitleRTL) },
+                isTitleRTL ? styles.calendarHeaderTitleRTL : styles.calendarHeaderTitleLTR,
+              ]}
+            >
+              {" "}
+            </Text>
+            <Text
+              allowFontScaling={false}
+              style={[
+                styles.calendarHeaderTitleText,
+                { color: theme.text, fontFamily: getTitleFontFamily(isTitleRTL) },
+                !isTitleRTL && styles.calendarHeaderTitleYearEN,
+                isTitleRTL ? styles.calendarHeaderTitleRTL : styles.calendarHeaderTitleLTR,
+              ]}
+            >
+              {headerTitleParts.yearText}
+            </Text>
           </View>
         </View>
         <Pressable
           style={[styles.monthNavButton, { backgroundColor: theme.primary + "20" }]}
-          onPress={handleNextMonth}
+          onPress={isRTL ? handlePrevMonth : handleNextMonth}
         >
-          <Feather name={isRTL ? "chevron-left" : "chevron-right"} size={20} color={theme.primary} />
+          <Feather name="chevron-right" size={20} color={theme.primary} />
         </Pressable>
       </View>
 
@@ -205,22 +253,53 @@ export function CalendarPicker({ selectedDate, onSelectDate, onClose }: Calendar
         })}
       </View>
 
-      <View style={[styles.selectedInfo, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
-        <View style={[styles.selectedValueRow, isRTL && styles.selectedValueRowRTL]}>
-          <ThemedText type="body" style={{ color: theme.textSecondary }}>
-            {t("cal_selected")}:
-          </ThemedText>
-          <NumberText size="md" style={{ color: theme.text, textAlign: isRTL ? "right" : "left" }}>
-            {selectedDate}
-          </NumberText>
+      <View
+        style={[
+          styles.selectedInfo,
+          { flexDirection: isRTL ? "row-reverse" : "row" },
+          { backgroundColor: theme.backgroundSecondary, borderColor: theme.border },
+        ]}
+      >
+        <View style={styles.selectedGroup}>
+          {isRTL ? (
+            <>
+              <NumberText
+                size="md"
+                style={[
+                  styles.selectedDateText,
+                  { color: theme.text, textAlign: "right" },
+                ]}
+              >
+                {selectedDate}
+              </NumberText>
+              <ThemedText type="body" style={{ color: theme.textSecondary, textAlign: "right" }}>
+                {t("cal_selected")}:
+              </ThemedText>
+            </>
+          ) : (
+            <>
+              <ThemedText type="body" style={{ color: theme.textSecondary, textAlign: "left" }}>
+                {t("cal_selected")}:
+              </ThemedText>
+              <NumberText
+                size="md"
+                style={[
+                  styles.selectedDateText,
+                  { color: theme.text, textAlign: "left" },
+                ]}
+              >
+                {selectedDate}
+              </NumberText>
+            </>
+          )}
         </View>
-        <View style={[styles.dayLetterBadge, { backgroundColor: theme.primary + "20" }]}>
-          <ThemedText type="small" style={{ color: theme.primary, fontWeight: "600" }}>
-            {t("cal_day")}
-          </ThemedText>
-          <ThemedText semanticVariant="labelPrimary" style={{ color: theme.primary }}>
-            {dayLetter}
-          </ThemedText>
+
+        <View style={styles.selectedBadgeContainer}>
+          <View style={[styles.dayLetterBadge, { backgroundColor: theme.primary + "20" }]}>
+            <ThemedText semanticVariant="labelPrimary" style={{ color: theme.primary }}>
+              {dayLetter}
+            </ThemedText>
+          </View>
         </View>
       </View>
 
@@ -262,9 +341,38 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   monthYearRow: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.xs,
+    justifyContent: "center",
+    width: "100%",
+  },
+  monthYearRowLTR: {
+    flexDirection: "row",
+  },
+  monthYearRowRTL: {
+    flexDirection: "row-reverse",
+  },
+  calendarHeaderTitleText: {
+    fontSize: 18,
+    lineHeight: 26,
+    fontWeight: "600",
+    letterSpacing: 0,
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
+  calendarHeaderTitleLTR: {
+    writingDirection: "ltr",
+    textAlign: "center",
+    fontVariant: ["tabular-nums", "lining-nums"],
+  },
+  calendarHeaderTitleRTL: {
+    writingDirection: "rtl",
+    textAlign: "center",
+  },
+  calendarHeaderTitleSpace: {
+    minWidth: 4,
+  },
+  calendarHeaderTitleYearEN: {
+    fontVariant: ["tabular-nums", "lining-nums"],
   },
   weekdaysRow: {
     flexDirection: "row",
@@ -287,7 +395,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   selectedInfo: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     padding: Spacing.md,
@@ -296,14 +403,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: Spacing.md,
   },
-  selectedValueRow: {
+  selectedGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     flexShrink: 1,
   },
-  selectedValueRowRTL: {
-    flexDirection: "row-reverse",
+  selectedBadgeContainer: {
+    flexShrink: 0,
+  },
+  selectedDateText: {
+    writingDirection: "ltr",
   },
   dayLetterBadge: {
     flexDirection: "row",

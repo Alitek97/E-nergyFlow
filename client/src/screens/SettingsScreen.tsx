@@ -4,15 +4,19 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Modal,
   TextInput,
   ActivityIndicator,
   Alert,
   Platform,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Constants from "expo-constants";
@@ -27,6 +31,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRTL } from "@/hooks/useRTL";
 import { Language } from "@/lib/i18n";
+import type { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
+import { useUnits } from "@/contexts/UnitsContext";
 
 interface LanguageOption {
   code: Language;
@@ -36,7 +42,7 @@ interface LanguageOption {
 
 const LANGUAGES: LanguageOption[] = [
   { code: "en", name: "English", nativeName: "English" },
-  { code: "ar", name: "Arabic", nativeName: "العربية" },
+  { code: "ar", name: "Arabic", nativeName: "\u0627\u0644\u0639\u0631\u0628\u064a\u0629" },
 ];
 
 interface ThemeOption {
@@ -91,6 +97,189 @@ const COLOR_THEME_OPTIONS: ColorThemeOption[] = [
 ];
 
 type AuthMode = "none" | "signup" | "signin";
+type SelectionSheetKey = "language" | "theme" | "colorTheme" | null;
+
+type SettingsRowProps = {
+  icon: React.ComponentProps<typeof Feather>["name"];
+  title: string;
+  value?: string;
+  isRTL: boolean;
+  theme: ReturnType<typeof useTheme>["theme"];
+  onPress?: () => void;
+  testID?: string;
+  valueNumberOfLines?: number;
+  valueWritingDirection?: "auto" | "ltr" | "rtl";
+  trailingAccessory?: React.ReactNode;
+};
+
+type SelectionSheetOption = {
+  key: string;
+  title: string;
+  subtitle?: string;
+  icon?: React.ComponentProps<typeof Feather>["name"];
+  selected: boolean;
+  onPress: () => void;
+  testID?: string;
+};
+
+type SelectionSheetProps = {
+  visible: boolean;
+  title: string;
+  isRTL: boolean;
+  theme: ReturnType<typeof useTheme>["theme"];
+  options: SelectionSheetOption[];
+  onClose: () => void;
+};
+
+function SettingsRow({
+  icon,
+  title,
+  value,
+  isRTL,
+  theme,
+  onPress,
+  testID,
+  valueNumberOfLines = 1,
+  valueWritingDirection,
+  trailingAccessory,
+}: SettingsRowProps) {
+  const content = (
+    <View
+      style={[
+        styles.settingsRow,
+        { flexDirection: isRTL ? "row-reverse" : "row" },
+      ]}
+    >
+      <View style={[styles.settingsRowStart, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
+        <Feather name={icon} size={18} color={theme.primary} />
+        <ThemedText semanticVariant="labelPrimary" style={{ textAlign: isRTL ? "right" : "left" }}>
+          {title}
+        </ThemedText>
+      </View>
+
+      <View style={[styles.settingsRowEnd, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
+        {value ? (
+          <ThemedText
+            semanticVariant="labelSecondary"
+            style={{
+              color: theme.textSecondary,
+              textAlign: isRTL ? "left" : "right",
+              ...(valueWritingDirection ? { writingDirection: valueWritingDirection } : {}),
+            }}
+            numberOfLines={valueNumberOfLines}
+          >
+            {value}
+          </ThemedText>
+        ) : null}
+        {trailingAccessory}
+        {onPress ? (
+          <Feather name={isRTL ? "chevron-left" : "chevron-right"} size={18} color={theme.textSecondary} />
+        ) : null}
+      </View>
+    </View>
+  );
+
+  if (!onPress) {
+    return content;
+  }
+
+  return (
+    <Pressable
+      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+      onPress={onPress}
+      accessibilityRole="button"
+      testID={testID}
+    >
+      {content}
+    </Pressable>
+  );
+}
+
+function SelectionSheet({ visible, title, isRTL, theme, options, onClose }: SelectionSheetProps) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.sheetOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
+        <View
+          style={[
+            styles.sheetContainer,
+            { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+          ]}
+        >
+          <View
+            style={[
+              styles.sheetHeader,
+              { flexDirection: isRTL ? "row-reverse" : "row", borderBottomColor: theme.border },
+            ]}
+          >
+            <ThemedText semanticVariant="sectionTitle" style={{ textAlign: isRTL ? "right" : "left" }}>
+              {title}
+            </ThemedText>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              style={styles.sheetCloseButton}
+              hitSlop={8}
+            >
+              <Feather name="x" size={20} color={theme.textSecondary} />
+            </Pressable>
+          </View>
+
+          <View style={styles.sheetOptions}>
+            {options.map((option, index) => (
+              <Pressable
+                key={option.key}
+                style={[
+                  styles.sheetOptionRow,
+                  {
+                    flexDirection: isRTL ? "row-reverse" : "row",
+                    borderBottomColor: theme.border,
+                    borderBottomWidth: index < options.length - 1 ? 1 : 0,
+                  },
+                ]}
+                onPress={option.onPress}
+                accessibilityRole="button"
+                accessibilityState={{ selected: option.selected }}
+                testID={option.testID}
+              >
+                <View style={[styles.sheetOptionStart, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
+                  {option.icon ? (
+                    <Feather
+                      name={option.icon}
+                      size={18}
+                      color={option.selected ? theme.primary : theme.textSecondary}
+                    />
+                  ) : null}
+                  <View>
+                    <ThemedText semanticVariant="labelPrimary" style={{ textAlign: isRTL ? "right" : "left" }}>
+                      {option.title}
+                    </ThemedText>
+                    {option.subtitle ? (
+                      <ThemedText
+                        semanticVariant="labelSecondary"
+                        style={{ color: theme.textSecondary, textAlign: isRTL ? "right" : "left" }}
+                      >
+                        {option.subtitle}
+                      </ThemedText>
+                    ) : null}
+                  </View>
+                </View>
+
+                <View style={styles.sheetOptionEnd}>
+                  {option.selected ? (
+                    <View style={[styles.checkCircle, { backgroundColor: theme.primary }]}>
+                      <Feather name="check" size={16} color={theme.buttonText} />
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 export default function SettingsScreen() {
   const { theme, mode, setMode, colorTheme, setColorTheme, typography } = useTheme();
@@ -99,8 +288,10 @@ export default function SettingsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const layout = useResponsiveLayout();
   const { t, language, setLanguage, isRTL } = useLanguage();
-  const { user, signOut, signIn, isGuest, upgradeGuestAccount, authError } = useAuth();
+  const { unitsConfig } = useUnits();
+  const { user, profile, signOut, signIn, isGuest, upgradeGuestAccount, authError } = useAuth();
   const { rtlRow, rtlText } = useRTL();
+  const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
 
   const [authMode, setAuthMode] = useState<AuthMode>("none");
   const [email, setEmail] = useState("");
@@ -109,6 +300,7 @@ export default function SettingsScreen() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeSelectionSheet, setActiveSelectionSheet] = useState<SelectionSheetKey>(null);
 
   const handleSignOut = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -116,6 +308,18 @@ export default function SettingsScreen() {
   };
 
   const appVersion = Constants.expoConfig?.version || "1.0.0";
+  const displayValue = profile?.displayName?.trim()
+    ? profile.displayName
+    : user?.email ?? "";
+  const currentLanguageOption = LANGUAGES.find((option) => option.code === language);
+  const currentThemeOption = THEME_OPTIONS.find((option) => option.mode === mode);
+  const currentColorThemeOption = COLOR_THEME_OPTIONS.find((option) => option.name === colorTheme);
+  const unitsPresetLabel =
+    unitsConfig.preset === "metric"
+      ? t("units_metric")
+      : unitsConfig.preset === "english"
+        ? t("units_english")
+        : t("units_custom");
 
   const handleSelectLanguage = (lang: Language) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -131,6 +335,8 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setColorTheme(themeName);
   };
+
+  const closeSelectionSheet = () => setActiveSelectionSheet(null);
 
   const resetForm = () => {
     setEmail("");
@@ -425,26 +631,38 @@ export default function SettingsScreen() {
       </ThemedText>
 
       <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
-        <View style={[styles.aboutRow, { borderBottomColor: theme.border, borderBottomWidth: 1 }]}>
-          <IconLabelRow
+        <View style={[styles.groupedRow, { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+          <SettingsRow
             icon="user"
-            iconColor={theme.primary}
-            title={t("email")}
-            subtitle={user?.email || ""}
+            title={t("display_name")}
+            value={displayValue}
+            trailingAccessory={
+              profile?.avatarUrl ? (
+                <Image source={{ uri: profile.avatarUrl }} style={styles.accountAvatar} />
+              ) : (
+                <View style={[styles.accountAvatarPlaceholder, { backgroundColor: theme.backgroundSecondary }]}>
+                  <Feather name="user" size={18} color={theme.textSecondary} />
+                </View>
+              )
+            }
+            isRTL={isRTL}
+            theme={theme}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate("AccountSettings");
+            }}
           />
         </View>
 
-        <Pressable
-          style={styles.aboutRow}
-          onPress={handleSignOut}
-        >
-          <IconLabelRow
+        <View style={styles.groupedRow}>
+          <SettingsRow
             icon="log-out"
-            iconColor={theme.error}
             title={t("sign_out")}
-            titleStyle={{ color: theme.error }}
+            isRTL={isRTL}
+            theme={{ ...theme, primary: theme.error }}
+            onPress={handleSignOut}
           />
-        </Pressable>
+        </View>
       </View>
     </Animated.View>
   );
@@ -465,165 +683,90 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {!user && authError ? renderSetupRequiredSection() : isGuest ? renderGuestSection() : renderLoggedInSection()}
+
         <Animated.View entering={FadeInDown.duration(300)}>
           <ThemedText semanticVariant="sectionTitle" style={[styles.sectionTitle, rtlText]}>
             {t("language")}
           </ThemedText>
 
           <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
-            <View style={[styles.cardHeader, rtlRow, { borderBottomColor: theme.border }]}>
-              <IconLabelRow
+            <View style={styles.groupedRow}>
+              <SettingsRow
                 icon="globe"
-                iconColor={theme.primary}
                 title={t("language")}
-                subtitle={t("select_language")}
+                value={currentLanguageOption?.nativeName || currentLanguageOption?.name}
+                isRTL={isRTL}
+                theme={theme}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate("LanguageSettings");
+                }}
+                testID="button-open-language-sheet"
               />
-            </View>
-
-            <View style={styles.languageOptions}>
-              {LANGUAGES.map((lang) => (
-                <Pressable
-                  key={lang.code}
-                  style={[
-                    styles.languageOption,
-                    { borderColor: language === lang.code ? theme.primary : theme.border },
-                    language === lang.code && { backgroundColor: theme.primary + "15" },
-                  ]}
-                  onPress={() => handleSelectLanguage(lang.code)}
-                  testID={`button-language-${lang.code}`}
-                >
-                  <View style={[rtlRow, { alignItems: "center", justifyContent: "space-between" }]}>
-                    <View>
-                      <ThemedText semanticVariant="labelPrimary" style={rtlText}>
-                        {lang.nativeName}
-                      </ThemedText>
-                      <ThemedText semanticVariant="labelSecondary" style={[{ color: theme.textSecondary }, rtlText]}>
-                        {lang.name}
-                      </ThemedText>
-                    </View>
-                    {language === lang.code ? (
-                      <View style={[styles.checkCircle, { backgroundColor: theme.primary }]}>
-                        <Feather name="check" size={16} color={theme.buttonText} />
-                      </View>
-                    ) : null}
-                  </View>
-                </Pressable>
-              ))}
             </View>
           </View>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(50).duration(300)}>
           <ThemedText semanticVariant="sectionTitle" style={[styles.sectionTitle, rtlText]}>
+            {t("units")}
+          </ThemedText>
+
+          <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
+            <View style={styles.groupedRow}>
+              <SettingsRow
+                icon="sliders"
+                title={t("units")}
+                value={unitsPresetLabel}
+                isRTL={isRTL}
+                theme={theme}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate("UnitsSettings");
+                }}
+              />
+            </View>
+          </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(75).duration(300)}>
+          <ThemedText semanticVariant="sectionTitle" style={[styles.sectionTitle, rtlText]}>
             {t("theme")}
           </ThemedText>
 
           <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
-            <View style={[styles.cardHeader, rtlRow, { borderBottomColor: theme.border }]}>
-              <IconLabelRow
+            <View style={[styles.groupedRow, { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+              <SettingsRow
                 icon="moon"
-                iconColor={theme.primary}
                 title={t("theme")}
-                subtitle={t("select_theme")}
+                value={currentThemeOption ? t(currentThemeOption.titleKey) : ""}
+                isRTL={isRTL}
+                theme={theme}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate("ThemeSettings");
+                }}
+                testID="button-open-theme-sheet"
               />
             </View>
 
-            <View style={styles.languageOptions}>
-              {THEME_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.mode}
-                  style={[
-                    styles.languageOption,
-                    { borderColor: mode === option.mode ? theme.primary : theme.border },
-                    mode === option.mode && { backgroundColor: theme.primary + "15" },
-                  ]}
-                  onPress={() => handleSelectTheme(option.mode)}
-                  testID={`button-theme-${option.mode}`}
-                >
-                  <View style={[rtlRow, { alignItems: "center", justifyContent: "space-between" }]}>
-                    <View style={[rtlRow, { alignItems: "center", flex: 1, gap: Spacing.md }]}>
-                      <Feather 
-                        name={option.icon} 
-                        size={20} 
-                        color={mode === option.mode ? theme.primary : theme.textSecondary} 
-                      />
-                      <View>
-                        <ThemedText semanticVariant="labelPrimary" style={rtlText}>
-                          {t(option.titleKey)}
-                        </ThemedText>
-                        <ThemedText semanticVariant="labelSecondary" style={[{ color: theme.textSecondary }, rtlText]}>
-                          {t(option.descKey)}
-                        </ThemedText>
-                      </View>
-                    </View>
-                    {mode === option.mode ? (
-                      <View style={[styles.checkCircle, { backgroundColor: theme.primary }]}>
-                        <Feather name="check" size={16} color={theme.buttonText} />
-                      </View>
-                    ) : null}
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(100).duration(300)}>
-          <ThemedText semanticVariant="sectionTitle" style={[styles.sectionTitle, rtlText]}>
-            {t("color_theme")}
-          </ThemedText>
-
-          <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
-            <View style={[styles.cardHeader, rtlRow, { borderBottomColor: theme.border }]}>
-              <IconLabelRow
+            <View style={styles.groupedRow}>
+              <SettingsRow
                 icon="droplet"
-                iconColor={theme.primary}
                 title={t("color_theme")}
-                subtitle={t("select_color_theme")}
+                value={currentColorThemeOption ? t(currentColorThemeOption.titleKey) : ""}
+                isRTL={isRTL}
+                theme={theme}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate("ColorThemeSettings");
+                }}
+                testID="button-open-color-theme-sheet"
               />
-            </View>
-
-            <View style={styles.languageOptions}>
-              {COLOR_THEME_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.name}
-                  style={[
-                    styles.languageOption,
-                    { borderColor: colorTheme === option.name ? theme.primary : theme.border },
-                    colorTheme === option.name && { backgroundColor: theme.primary + "15" },
-                  ]}
-                  onPress={() => handleSelectColorTheme(option.name)}
-                  testID={`button-color-theme-${option.name}`}
-                >
-                  <View style={[rtlRow, { alignItems: "center", justifyContent: "space-between" }]}>
-                    <View style={[rtlRow, { alignItems: "center", flex: 1, gap: Spacing.md }]}>
-                      <Feather
-                        name={option.icon}
-                        size={20}
-                        color={colorTheme === option.name ? theme.primary : theme.textSecondary}
-                      />
-                      <View>
-                        <ThemedText semanticVariant="labelPrimary" style={rtlText}>
-                          {t(option.titleKey)}
-                        </ThemedText>
-                        <ThemedText semanticVariant="labelSecondary" style={[{ color: theme.textSecondary }, rtlText]}>
-                          {t(option.descKey)}
-                        </ThemedText>
-                      </View>
-                    </View>
-                    {colorTheme === option.name ? (
-                      <View style={[styles.checkCircle, { backgroundColor: theme.primary }]}>
-                        <Feather name="check" size={16} color={theme.buttonText} />
-                      </View>
-                    ) : null}
-                  </View>
-                </Pressable>
-              ))}
             </View>
           </View>
         </Animated.View>
-
-        {!user && authError ? renderSetupRequiredSection() : isGuest ? renderGuestSection() : renderLoggedInSection()}
 
         <Animated.View entering={FadeInDown.delay(200).duration(300)}>
           <ThemedText semanticVariant="sectionTitle" style={[styles.sectionTitle, rtlText]}>
@@ -631,39 +774,109 @@ export default function SettingsScreen() {
           </ThemedText>
 
           <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
-            <View style={[styles.aboutRow, { borderBottomColor: theme.border, borderBottomWidth: 1 }]}>
-              <IconLabelRow
+            <View style={[styles.groupedRow, { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+              <SettingsRow
                 icon="zap"
-                iconColor={theme.primary}
                 title={t("app_name")}
-                subtitle={`${t("version_label")} ${appVersion}`}
-                subtitleStyle={{ writingDirection: "ltr" }}
+                isRTL={isRTL}
+                theme={theme}
               />
             </View>
 
-            <View style={[styles.aboutRow, { borderBottomColor: theme.border, borderBottomWidth: 1 }]}>
-              <IconLabelRow
+            <View style={[styles.groupedRow, { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+              <SettingsRow
+                icon="hash"
+                title={t("version_label")}
+                value={appVersion}
+                isRTL={isRTL}
+                theme={theme}
+                valueWritingDirection="ltr"
+              />
+            </View>
+
+            <View style={styles.groupedRow}>
+              <SettingsRow
                 icon="user"
-                iconColor={theme.success}
                 title={t("developer")}
-                subtitle={t("developer_name")}
-              />
-            </View>
-
-            <View style={styles.aboutRow}>
-              <IconLabelRow
-                icon="shield"
-                iconColor={theme.warning}
-                title={t("copyright")}
-                subtitle={t("copyright_text")}
+                value={t("developer_name")}
+                isRTL={isRTL}
+                theme={theme}
               />
             </View>
           </View>
         </Animated.View>
 
+        <SelectionSheet
+          visible={activeSelectionSheet === "language"}
+          title={t("language")}
+          isRTL={isRTL}
+          theme={theme}
+          onClose={closeSelectionSheet}
+          options={LANGUAGES.map((lang) => ({
+            key: lang.code,
+            title: lang.nativeName,
+            subtitle: lang.name,
+            selected: language === lang.code,
+            onPress: () => {
+              handleSelectLanguage(lang.code);
+              closeSelectionSheet();
+            },
+            testID: `button-language-${lang.code}`,
+          }))}
+        />
+
+        <SelectionSheet
+          visible={activeSelectionSheet === "theme"}
+          title={t("theme")}
+          isRTL={isRTL}
+          theme={theme}
+          onClose={closeSelectionSheet}
+          options={THEME_OPTIONS.map((option) => ({
+            key: option.mode,
+            title: t(option.titleKey),
+            subtitle: t(option.descKey),
+            icon: option.icon,
+            selected: mode === option.mode,
+            onPress: () => {
+              handleSelectTheme(option.mode);
+              closeSelectionSheet();
+            },
+            testID: `button-theme-${option.mode}`,
+          }))}
+        />
+
+        <SelectionSheet
+          visible={activeSelectionSheet === "colorTheme"}
+          title={t("color_theme")}
+          isRTL={isRTL}
+          theme={theme}
+          onClose={closeSelectionSheet}
+          options={COLOR_THEME_OPTIONS.map((option) => ({
+            key: option.name,
+            title: t(option.titleKey),
+            subtitle: t(option.descKey),
+            icon: option.icon,
+            selected: colorTheme === option.name,
+            onPress: () => {
+              handleSelectColorTheme(option.name);
+              closeSelectionSheet();
+            },
+            testID: `button-color-theme-${option.name}`,
+          }))}
+        />
+
         <View style={styles.footer}>
-          <ThemedText semanticVariant="helper" style={{ color: theme.textSecondary, textAlign: "center", writingDirection: "ltr" }}>
-            {t("version")}
+          <ThemedText
+            semanticVariant="helper"
+            style={{
+              color: theme.textSecondary,
+              textAlign: "center",
+              writingDirection: isRTL ? "rtl" : "ltr",
+            }}
+          >
+            {isRTL
+              ? "يساعد E-nergy Flow المشغلين على تسجيل و مراجعة قراءات الطاقة حسب الوجبات."
+              : "E-nergy Flow helps operators log and review plant energy readings across shifts."}
           </ThemedText>
         </View>
       </ScrollView>
@@ -679,12 +892,45 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionTitle: {
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   card: {
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.md,
     overflow: "hidden",
+  },
+  groupedRow: {
+    paddingHorizontal: Spacing.lg,
+  },
+  settingsRow: {
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Spacing.md,
+    width: "100%",
+    minHeight: 56,
+  },
+  settingsRowStart: {
+    alignItems: "center",
+    gap: Spacing.sm,
+    flexShrink: 1,
+  },
+  settingsRowEnd: {
+    alignItems: "center",
+    gap: Spacing.xs,
+    flexShrink: 1,
+    maxWidth: "62%",
+  },
+  accountAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  accountAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cardHeader: {
     flexDirection: "row",
@@ -716,13 +962,58 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  sheetContainer: {
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    overflow: "hidden",
+    maxHeight: "70%",
+  },
+  sheetHeader: {
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  sheetCloseButton: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetOptions: {
+    paddingVertical: Spacing.xs,
+  },
+  sheetOptionRow: {
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  sheetOptionStart: {
+    alignItems: "center",
+    gap: Spacing.md,
+    flex: 1,
+  },
+  sheetOptionEnd: {
+    minWidth: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   aboutRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
   },
   footer: {
-    marginTop: Spacing.xl,
+    marginTop: Spacing.lg,
     alignItems: "center",
     paddingBottom: Spacing.xl,
   },
@@ -759,3 +1050,4 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
   },
 });
+

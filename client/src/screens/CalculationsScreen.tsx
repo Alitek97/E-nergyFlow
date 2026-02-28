@@ -11,20 +11,19 @@ import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
+import { FeederCode } from "@/components/FeederCode";
 import { NumberText } from "@/components/NumberText";
-import { ValueWithUnit, UNITS } from "@/components/ValueWithUnit";
+import { ValueWithUnit } from "@/components/ValueWithUnit";
 import { useTheme } from "@/hooks/useTheme";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Spacing, BorderRadius, Typography } from "@/constants/theme";
 import { useDay } from "@/contexts/DayContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
 import { getFlowLabelAndStyle } from "@/lib/flowLabel";
-import {
-  format2,
-  format4,
-} from "@/lib/storage";
 import { computeCalculationsSummary } from "@/shared/lib/dayCalculations";
+import { formatEnergy, formatGas, formatPower } from "@/utils/units";
 
 interface StatCardProps {
   title: string;
@@ -35,6 +34,8 @@ interface StatCardProps {
   icon?: string;
   fullWidth?: boolean;
 }
+
+const TURBINE_COLUMN_WIDTH = 72;
 
 const StatCard = memo(function StatCard({ title, value, unit, subtitle, tone = "blue", icon, fullWidth }: StatCardProps) {
   const { theme } = useTheme();
@@ -88,6 +89,7 @@ export default function CalculationsScreen() {
   const layout = useResponsiveLayout();
   const { day, dateKey } = useDay();
   const { t, isRTL } = useLanguage();
+  const { unitsConfig } = useUnits();
   const { rtlRow, rtlText } = useRTL();
 
   const calculations = useMemo(() => {
@@ -98,6 +100,23 @@ export default function CalculationsScreen() {
     () => getFlowLabelAndStyle(calculations.exportVal >= 0, t, theme),
     [calculations.exportVal, t, theme]
   );
+  const productionText = useMemo(
+    () => formatEnergy(calculations.production, unitsConfig, { prefer: "fixed" }),
+    [calculations.production, unitsConfig]
+  );
+  const flowText = useMemo(
+    () => formatEnergy(Math.abs(calculations.exportVal), unitsConfig, { prefer: "fixed" }),
+    [calculations.exportVal, unitsConfig]
+  );
+  const consumptionText = useMemo(
+    () => formatEnergy(calculations.consumption, unitsConfig, { prefer: "fixed" }),
+    [calculations.consumption, unitsConfig]
+  );
+  const totalGasText = useMemo(
+    () => formatGas(calculations.totalGasM3, unitsConfig),
+    [calculations.totalGasM3, unitsConfig]
+  );
+  const gasUnitText = useMemo(() => formatGas(0, unitsConfig).unitText, [unitsConfig]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -135,24 +154,24 @@ export default function CalculationsScreen() {
           <View style={layout.isTablet ? styles.tabletStatsGrid : styles.mobileStatsStack}>
             <StatCard
               title={t("production")}
-              value={format2(calculations.production)}
-              unit={UNITS.energy}
+              value={productionText.valueText}
+              unit={productionText.unitText}
               tone="green"
               icon="zap"
               fullWidth={!layout.isTablet}
             />
             <StatCard
               title={flowStyle.text}
-              value={format2(Math.abs(calculations.exportVal))}
-              unit={UNITS.energy}
+              value={flowText.valueText}
+              unit={flowText.unitText}
               tone={flowStyle.tone}
               icon={calculations.exportVal >= 0 ? "arrow-up-right" : "arrow-down-left"}
               fullWidth={!layout.isTablet}
             />
             <StatCard
               title={t("consumption")}
-              value={format2(calculations.consumption)}
-              unit={UNITS.energy}
+              value={consumptionText.valueText}
+              unit={consumptionText.unitText}
               tone="yellow"
               icon="home"
               fullWidth={!layout.isTablet}
@@ -176,20 +195,20 @@ export default function CalculationsScreen() {
             </View>
 
             <View style={[styles.tableHeader, rtlRow, { borderBottomColor: theme.border }]}>
-              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { flex: 0.8, color: theme.textSecondary }]}>
+              <ThemedText
+                semanticVariant="tableHeader"
+                style={[styles.tableCell, styles.turbineColumn, styles.turbineHeaderCell, { color: theme.textSecondary }]}
+              >
                 {t("turbine")}
               </ThemedText>
-              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { color: theme.textSecondary }]}>
-                {t("diff_mwh")}
+              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { flex: 1.05, color: theme.textSecondary }]}>
+                {`${t("diff")} (${unitsConfig.energyUnit})`}
               </ThemedText>
-              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { color: theme.textSecondary }]}>
-                {t("mw_per_hr")}
+              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { flex: 1.05, color: theme.textSecondary }]}>
+                {`${unitsConfig.powerUnit}/h`}
               </ThemedText>
-              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { color: theme.textSecondary }]}>
-                {t("gas_m3")}
-              </ThemedText>
-              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { color: theme.textSecondary }]}>
-                {t("mmscf_unit")}
+              <ThemedText semanticVariant="tableHeader" style={[styles.tableCell, { flex: 1.2, color: theme.textSecondary }]}>
+                {`${t("gas_consumed")} (${gasUnitText})`}
               </ThemedText>
             </View>
 
@@ -205,24 +224,19 @@ export default function CalculationsScreen() {
                   },
                 ]}
               >
-                <View style={[styles.tableCell, { flex: 0.8, flexDirection: "row", alignItems: "center" }]}>
+                <View style={[styles.tableCell, styles.turbineColumn, styles.turbineBodyCell]}>
                   <View style={[styles.turbineBadgeSmall, { backgroundColor: theme.success + "20" }]}>
-                    <ThemedText semanticVariant="labelPrimary" style={{ color: theme.success }}>
-                      {r.t}
-                    </ThemedText>
+                    <FeederCode code={r.t} style={[styles.turbineBadgeCodeSmall, { color: theme.success }]} />
                   </View>
                 </View>
-                <NumberText tier="input" style={styles.tableCell}>
-                  {format2(r.diff)}
+                <NumberText tier="input" style={[styles.tableCell, { flex: 1.05 }]}>
+                  {formatEnergy(r.diff, unitsConfig, { prefer: "fixed" }).valueText}
                 </NumberText>
-                <NumberText tier="input" style={styles.tableCell}>
-                  {format2(r.mwPerHr)}
+                <NumberText tier="input" style={[styles.tableCell, { flex: 1.05 }]}>
+                  {formatPower(r.mwPerHr, unitsConfig).valueText}
                 </NumberText>
-                <NumberText tier="input" style={[styles.tableCell, { color: theme.warning }]}>
-                  {format2(r.gasM3)}
-                </NumberText>
-                <NumberText tier="input" style={[styles.tableCell, { color: theme.warning }]}>
-                  {format4(r.gasMMscf)}
+                <NumberText tier="input" style={[styles.tableCell, { flex: 1.2, color: theme.warning }]}>
+                  {formatGas(r.gasM3, unitsConfig).valueText}
                 </NumberText>
               </View>
             ))}
@@ -231,17 +245,11 @@ export default function CalculationsScreen() {
           <View style={styles.statsRow}>
             <StatCard
               title={t("total_gas")}
-              value={format2(calculations.totalGasM3)}
-              unit={UNITS.gasM3}
+              value={totalGasText.valueText}
+              unit={totalGasText.unitText}
               tone="yellow"
               icon="droplet"
-            />
-            <StatCard
-              title={t("total_gas")}
-              value={format4(calculations.totalGasMMscf)}
-              unit={UNITS.gasMMscf}
-              tone="yellow"
-              icon="droplet"
+              fullWidth
             />
           </View>
         </Animated.View>
@@ -253,69 +261,85 @@ export default function CalculationsScreen() {
 
           <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
             <View style={[styles.formulaRow, rtlRow, { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
-              <View style={[styles.formulaLabelRow, rtlRow]}>
-                <View style={[styles.formulaDot, { backgroundColor: theme.success }]} />
-                <ThemedText semanticVariant="labelSecondary" style={{ color: theme.textSecondary }}>
-                  {t("production")}
+              <View style={styles.formulaLabelColumn}>
+                <View style={[styles.formulaLabelRow, rtlRow]}>
+                  <View style={[styles.formulaDot, { backgroundColor: theme.success }]} />
+                  <ThemedText semanticVariant="labelSecondary" style={[rtlText, { color: theme.textSecondary }]}>
+                    {t("production")}
+                  </ThemedText>
+                </View>
+              </View>
+              <View style={[styles.formulaValueColumn, { alignItems: isRTL ? "flex-start" : "flex-end" }]}>
+                <ThemedText semanticVariant="tableCell" style={[styles.formulaValueText, { color: theme.primary, textAlign: isRTL ? "left" : "right" }]}>
+                  {t("sum_turbine_diff")}
                 </ThemedText>
               </View>
-              <ThemedText semanticVariant="tableCell" style={{ color: theme.primary }}>
-                {t("sum_turbine_diff")}
-              </ThemedText>
             </View>
             <View style={[styles.formulaRow, rtlRow, { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
-              <View style={[styles.formulaLabelRow, rtlRow]}>
-                <View style={[styles.formulaDot, { backgroundColor: theme.primary }]} />
-                <ThemedText semanticVariant="labelSecondary" style={{ color: theme.textSecondary }}>
-                  {t("export_withdrawal_label")}
+              <View style={styles.formulaLabelColumn}>
+                <View style={[styles.formulaLabelRow, rtlRow]}>
+                  <View style={[styles.formulaDot, { backgroundColor: theme.primary }]} />
+                  <ThemedText semanticVariant="labelSecondary" style={[rtlText, { color: theme.textSecondary }]}>
+                    {t("export_withdrawal_label")}
+                  </ThemedText>
+                </View>
+              </View>
+              <View style={[styles.formulaValueColumn, { alignItems: isRTL ? "flex-start" : "flex-end" }]}>
+                <ThemedText semanticVariant="tableCell" style={[styles.formulaValueText, { color: theme.primary, textAlign: isRTL ? "left" : "right" }]}>
+                  {t("sum_feeder_diff")}
                 </ThemedText>
               </View>
-              <ThemedText semanticVariant="tableCell" style={{ color: theme.primary }}>
-                {t("sum_feeder_diff")}
-              </ThemedText>
             </View>
             <View style={[styles.formulaRow, rtlRow, { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
-              <View style={[styles.formulaLabelRow, rtlRow]}>
-                <View style={[styles.formulaDot, { backgroundColor: theme.warning }]} />
-                <ThemedText semanticVariant="labelSecondary" style={{ color: theme.textSecondary }}>
-                  {t("consumption")}
+              <View style={styles.formulaLabelColumn}>
+                <View style={[styles.formulaLabelRow, rtlRow]}>
+                  <View style={[styles.formulaDot, { backgroundColor: theme.warning }]} />
+                  <ThemedText semanticVariant="labelSecondary" style={[rtlText, { color: theme.textSecondary }]}>
+                    {t("consumption")}
+                  </ThemedText>
+                </View>
+              </View>
+              <View style={[styles.formulaValueColumn, { alignItems: isRTL ? "flex-start" : "flex-end" }]}>
+                <ThemedText semanticVariant="tableCell" style={[styles.formulaValueText, { color: theme.primary, textAlign: isRTL ? "left" : "right" }]}>
+                  {t("production_minus_export")}
                 </ThemedText>
               </View>
-              <ThemedText semanticVariant="tableCell" style={{ color: theme.primary }}>
-                {t("production_minus_export")}
-              </ThemedText>
             </View>
-            <View style={[styles.formulaRow, rtlRow]}>
-              <View style={[styles.formulaLabelRow, rtlRow]}>
-                <View style={[styles.formulaDot, { backgroundColor: theme.warning }]} />
-                <ThemedText semanticVariant="labelSecondary" style={{ color: theme.textSecondary }}>
-                  {t("gas_formula")}
-                </ThemedText>
+            <View style={[styles.formulaRow, styles.formulaRowTop, rtlRow]}>
+              <View style={styles.formulaLabelColumn}>
+                <View style={[styles.formulaLabelRow, rtlRow]}>
+                  <View style={[styles.formulaDot, { backgroundColor: theme.warning }]} />
+                  <ThemedText semanticVariant="labelSecondary" style={[rtlText, { color: theme.textSecondary }]}>
+                    {t("gas_formula")}
+                  </ThemedText>
+                </View>
               </View>
-              <View style={styles.gasFormulas}>
-                <View style={styles.gasFormulaRow}>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.textSecondary }} numeric>MW/h ≤ 3:</ThemedText>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.warning }} numeric>
+              <View style={[styles.formulaValueColumn, { alignItems: isRTL ? "flex-start" : "flex-end" }]}>
+                <View style={[styles.gasFormulas, { alignItems: isRTL ? "flex-start" : "flex-end" }]}>
+                <View style={[styles.gasFormulaRow, { justifyContent: isRTL ? "flex-start" : "flex-end" }]}>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaConditionText, { color: theme.textSecondary }]} numeric>{`${unitsConfig.powerUnit}/h ≤ 3:`}</ThemedText>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaExpressionText, { color: theme.warning }]} numeric>
                     Diff × 1000
                   </ThemedText>
                 </View>
-                <View style={styles.gasFormulaRow}>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.textSecondary }} numeric>MW/h ≤ 5:</ThemedText>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.warning }} numeric>
+                <View style={[styles.gasFormulaRow, { justifyContent: isRTL ? "flex-start" : "flex-end" }]}>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaConditionText, { color: theme.textSecondary }]} numeric>{`${unitsConfig.powerUnit}/h ≤ 5:`}</ThemedText>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaExpressionText, { color: theme.warning }]} numeric>
                     Diff × 700
                   </ThemedText>
                 </View>
-                <View style={styles.gasFormulaRow}>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.textSecondary }} numeric>MW/h ≤ 8:</ThemedText>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.warning }} numeric>
+                <View style={[styles.gasFormulaRow, { justifyContent: isRTL ? "flex-start" : "flex-end" }]}>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaConditionText, { color: theme.textSecondary }]} numeric>{`${unitsConfig.powerUnit}/h ≤ 8:`}</ThemedText>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaExpressionText, { color: theme.warning }]} numeric>
                     Diff × 500
                   </ThemedText>
                 </View>
-                <View style={styles.gasFormulaRow}>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.textSecondary }} numeric>{"MW/h > 8:"}</ThemedText>
-                  <ThemedText semanticVariant="tableHeader" style={{ color: theme.warning }} numeric>
+                <View style={[styles.gasFormulaRow, styles.gasFormulaRowLast, { justifyContent: isRTL ? "flex-start" : "flex-end" }]}>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaConditionText, { color: theme.textSecondary }]} numeric>{`${unitsConfig.powerUnit}/h > 8:`}</ThemedText>
+                  <ThemedText semanticVariant="tableHeader" style={[styles.gasFormulaExpressionText, { color: theme.warning }]} numeric>
                     Diff × 420
                   </ThemedText>
+                </View>
                 </View>
               </View>
             </View>
@@ -354,8 +378,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   statsRow: {
-    flexDirection: "row",
-    gap: Spacing.md,
+    flexDirection: "column",
     marginBottom: Spacing.lg,
   },
   mobileStatsStack: {
@@ -433,6 +456,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
     includeFontPadding: false,
   },
+  turbineColumn: {
+    flex: 0,
+    width: TURBINE_COLUMN_WIDTH,
+  },
+  turbineHeaderCell: {
+    textAlign: "center",
+  },
+  turbineBodyCell: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
   turbineBadgeSmall: {
     width: 24,
     height: 24,
@@ -440,17 +474,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  turbineBadgeCodeSmall: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   formulaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     padding: Spacing.lg,
     gap: Spacing.sm,
+    minHeight: 64,
+  },
+  formulaRowTop: {
+    alignItems: "flex-start",
+  },
+  formulaLabelColumn: {
+    flex: 1,
+    minWidth: 0,
   },
   formulaLabelRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
+  },
+  formulaValueColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  formulaValueText: {
+    width: "100%",
   },
   formulaDot: {
     width: 8,
@@ -458,12 +511,23 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   gasFormulas: {
-    alignItems: "flex-end",
+    width: "100%",
     flexShrink: 1,
   },
   gasFormulaRow: {
     flexDirection: "row",
-    gap: Spacing.sm,
     marginBottom: Spacing.xs,
+  },
+  gasFormulaRowLast: {
+    marginBottom: 0,
+  },
+  gasFormulaConditionText: {
+    writingDirection: "ltr",
+    textAlign: "left",
+  },
+  gasFormulaExpressionText: {
+    writingDirection: "ltr",
+    textAlign: "left",
+    marginLeft: Spacing.sm,
   },
 });

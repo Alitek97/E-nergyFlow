@@ -16,6 +16,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
+import { FeederCode } from "@/components/FeederCode";
 import { NumberText } from "@/components/NumberText";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import { NumericInputField } from "@/components/NumericInputField";
@@ -319,17 +320,14 @@ export default function TurbinesScreen() {
                   <View style={[styles.turbineLabelRow, rtlRow]}>
                     <View style={[styles.turbineTitleGroup, isRTL && styles.turbineTitleGroupRTL]}>
                       <View style={[styles.turbineBadge, { backgroundColor: statusColor + "20" }]}>
-                        <ThemedText semanticVariant="labelPrimary" style={{ color: statusColor }}>
-                          {t}
-                        </ThemedText>
+                        <FeederCode code={t} style={[styles.turbineBadgeCode, { color: statusColor }]} />
                       </View>
-                      <ThemedText
-                        semanticVariant="labelSecondary"
-                        numberOfLines={1}
-                        style={[styles.turbineLabel, ["A", "B", "C", "S"].includes(t) && { fontSize: 16 }]}
-                      >
-                        {translate("turbine")} {t}
-                      </ThemedText>
+                      <View style={[styles.turbineLabel, styles.turbineLabelTextRow, isRTL && styles.turbineLabelTextRowRTL]}>
+                        <ThemedText semanticVariant="labelSecondary" numberOfLines={1} style={styles.turbineLabelText}>
+                          {translate("turbine")}
+                        </ThemedText>
+                        <FeederCode code={t} style={[styles.turbineInlineCode, isRTL && styles.turbineInlineCodeRTL]} />
+                      </View>
                     </View>
                     <HoursChip
                       label={translate("hours")}
@@ -494,9 +492,7 @@ export default function TurbinesScreen() {
                   ]}
                 >
                   <View style={[styles.turbineBadgeSmall, { backgroundColor: theme.success + "20" }]}>
-                    <ThemedText semanticVariant="labelPrimary" style={{ color: theme.success }}>
-                      {r.t}
-                    </ThemedText>
+                    <FeederCode code={r.t} style={[styles.turbineBadgeCodeSmall, { color: theme.success }]} />
                   </View>
                   <View style={[styles.summaryValues, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
                     {summaryCells.map((cell) => (
@@ -526,6 +522,7 @@ export default function TurbinesScreen() {
       <HoursPickerSheet
         visible={hoursPickerTurbine !== null}
         value={selectedHoursValue}
+        turbineLabel={hoursPickerTurbine ?? undefined}
         onCancel={handleCloseHoursPicker}
         onDone={handleDoneHoursPicker}
       />
@@ -614,6 +611,33 @@ const styles = StyleSheet.create({
   turbineLabel: {
     flex: 1,
     minWidth: 0,
+  },
+  turbineLabelTextRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  turbineLabelTextRowRTL: {
+    flexDirection: "row-reverse",
+  },
+  turbineLabelText: {
+    flexShrink: 1,
+  },
+  turbineInlineCode: {
+    marginLeft: Spacing.xs,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  turbineInlineCodeRTL: {
+    marginLeft: 0,
+    marginRight: Spacing.xs,
+  },
+  turbineBadgeCode: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  turbineBadgeCodeSmall: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   copyArrowButton: {
     width: 28,

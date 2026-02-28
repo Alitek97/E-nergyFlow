@@ -8,14 +8,19 @@ import React, {
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Session, User, AuthError } from "@supabase/supabase-js";
 import { signInAsGuest, isGuestUser, clearGuestUserId, storeGuestUserId } from "@/lib/guestAuth";
+import { ensureProfile, UserProfile } from "@/lib/profile";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
+  profile: UserProfile | null;
+  profileLoading: boolean;
   loading: boolean;
   isGuest: boolean;
   authError: string | null;
   isConfigured: boolean;
+  refreshProfile: () => Promise<void>;
+  patchProfile: (patch: Partial<UserProfile> | null) => void;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ error: AuthError | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
@@ -41,9 +46,51 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const isGuest = isGuestUser(user);
+
+  const patchProfile = (patch: Partial<UserProfile> | null) => {
+    if (patch === null) {
+      setProfile(null);
+      return;
+    }
+
+    setProfile((prev) => {
+      const base: UserProfile | null =
+        prev ??
+        (user
+          ? {
+              id: user.id,
+              displayName: null,
+              avatarUrl: null,
+              updatedAt: null,
+            }
+          : null);
+
+      if (!base) return null;
+      return { ...base, ...patch };
+    });
+  };
+
+  const refreshProfile = async () => {
+    if (!isSupabaseConfigured || !user || user.is_anonymous) {
+      setProfile(null);
+      return;
+    }
+
+    setProfileLoading(true);
+    try {
+      const loadedProfile = await ensureProfile(user.id);
+      setProfile(loadedProfile);
+    } catch (error) {
+      console.warn("[Auth] Failed to refresh profile", error);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   useEffect(() => {
     const initAuth = async () => {
@@ -96,6 +143,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+        setProfile(null);
         
         if (session?.user && isGuestUser(session.user)) {
           await storeGuestUserId(session.user.id);
@@ -105,6 +153,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    refreshProfile();
+  }, [user]);
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     const { error } = await supabase.auth.signUp({
@@ -184,10 +236,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       value={{
         user,
         session,
+        profile,
+        profileLoading,
         loading,
         isGuest,
         authError,
         isConfigured: isSupabaseConfigured,
+        refreshProfile,
+        patchProfile,
         signUp,
         signIn,
         signOut,

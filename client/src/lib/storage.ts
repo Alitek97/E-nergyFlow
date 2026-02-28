@@ -365,10 +365,6 @@ export function gasForTurbine(diffMwh: number, mwPerHr: number): number {
   return p * 420;
 }
 
-export function m3ToMMscf(m3: number): number {
-  return (m3 * 35.3146667) / 1_000_000;
-}
-
 export async function exportAllData(): Promise<string> {
   try {
     const days = await getAllDaysData();
