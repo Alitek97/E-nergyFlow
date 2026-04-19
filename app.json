@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "E-nergy Flow",
+    "slug": "power-plant-calculations",
+    "version": "2.8.7",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "energyflow",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "icon": {
+        "light": "./assets/images/icon-light.png",
+        "dark": "./assets/images/icon-dark.png",
+        "tinted": "./assets/images/icon-tinted.png"
+      },
+      "supportsTablet": true,
+      "bundleIdentifier": "com.alitek.energyflow",
+      "buildNumber": "2"
+    },
+    "android": {
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0E1A",
+        "foregroundImage": "./assets/images/icon.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.alitek.energyflow"
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0A0E1A",
+          "dark": {
+            "backgroundColor": "#0A0E1A"
+          }
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "34ab1c58-342c-4653-8b01-fe8b919d8940"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/34ab1c58-342c-4653-8b01-fe8b919d8940"
+    },
+    "owner": "alitek977"
+  }
+}
