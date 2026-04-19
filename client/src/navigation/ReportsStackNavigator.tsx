@@ -3,6 +3,7 @@ import { Pressable, StyleSheet } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import ReportsScreen from "@/screens/ReportsScreen";
+import CalculationsScreen from "@/screens/CalculationsScreen";
 import MonthsScreen from "@/screens/MonthsScreen";
 import MonthDaysScreen from "@/screens/MonthDaysScreen";
 import DayDetailsScreen from "@/screens/DayDetailsScreen";
@@ -10,6 +11,7 @@ import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTheme } from "@/hooks/useTheme";
 import { withAlpha } from "@/constants/theme";
+import { withSecondaryGroupSwipe } from "@/navigation/SecondaryGroupSwipe";
 
 export type ReportsStackParamList = {
   Reports: undefined;
@@ -19,6 +21,13 @@ export type ReportsStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<ReportsStackParamList>();
+const SwipeableReportsScreen = withSecondaryGroupSwipe(
+  "ReportsTab",
+  ReportsScreen,
+  {
+    rightPreviewComponent: CalculationsScreen,
+  },
+);
 
 export default function ReportsStackNavigator() {
   const screenOptions = useScreenOptions();
@@ -59,7 +68,7 @@ export default function ReportsStackNavigator() {
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen
         name="Reports"
-        component={ReportsScreen}
+        component={SwipeableReportsScreen}
         options={{
           title: t("tab_reports"),
           headerTitleAlign: "center",

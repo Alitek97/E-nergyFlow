@@ -16,6 +16,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { DayData, feederRowComputed, turbineRowComputed } from "@/lib/storage";
+import { useSecondaryGroupSwipeControl } from "@/navigation/SecondaryGroupSwipe";
 
 interface ReportsChartsCarouselProps {
   days: DayData[];
@@ -38,6 +39,7 @@ const LOGICAL_PAGE_KEYS: ChartPageId[] = ["overview", "feeders", "turbines"];
 export function ReportsChartsCarousel({ days }: ReportsChartsCarouselProps) {
   const { theme } = useTheme();
   const { t, isRTL } = useLanguage();
+  const { setSwipeBlocked } = useSecondaryGroupSwipeControl();
   const flatListRef = useRef<FlatList<ChartPage>>(null);
   const ignoreNextMomentumRef = useRef(false);
   const hasInitialScrollSyncedRef = useRef(false);
@@ -183,6 +185,21 @@ export function ReportsChartsCarousel({ days }: ReportsChartsCarouselProps) {
     [containerWidth, toPhysicalIndex],
   );
 
+  const handleCarouselInteractionStart = useCallback(() => {
+    setSwipeBlocked(true);
+  }, [setSwipeBlocked]);
+
+  const handleCarouselInteractionEnd = useCallback(() => {
+    setSwipeBlocked(false);
+  }, [setSwipeBlocked]);
+
+  React.useEffect(
+    () => () => {
+      setSwipeBlocked(false);
+    },
+    [setSwipeBlocked],
+  );
+
   React.useEffect(() => {
     if (!containerWidth || hasInitialScrollSyncedRef.current) return;
     hasInitialScrollSyncedRef.current = true;
@@ -305,7 +322,15 @@ export function ReportsChartsCarousel({ days }: ReportsChartsCarouselProps) {
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.key}
-          onMomentumScrollEnd={handleMomentumEnd}
+          onTouchStart={handleCarouselInteractionStart}
+          onTouchEnd={handleCarouselInteractionEnd}
+          onTouchCancel={handleCarouselInteractionEnd}
+          onScrollBeginDrag={handleCarouselInteractionStart}
+          onScrollEndDrag={handleCarouselInteractionEnd}
+          onMomentumScrollEnd={(event) => {
+            handleCarouselInteractionEnd();
+            handleMomentumEnd(event);
+          }}
           onScrollToIndexFailed={(info) => {
             setTimeout(() => {
               const width = widthRef.current || 1;

@@ -8,6 +8,7 @@ export type MainTabRouteName =
   | "SettingsTab";
 
 export type MainTabGroupId = "operations" | "analysis" | "settings";
+export type SecondarySwipeDirection = "left" | "right";
 
 export type MainTabTitleKey =
   | "tab_feeders"
@@ -91,4 +92,27 @@ export function getGroupForRoute(routeName: MainTabRouteName): MainTabGroupId {
 export function groupShowsSegmentedControl(groupId: MainTabGroupId) {
   const group = PRIMARY_TAB_GROUPS.find((entry) => entry.id === groupId);
   return (group?.routes.length ?? 0) > 1;
+}
+
+export function getSiblingRouteForSwipe(
+  routeName: MainTabRouteName,
+  direction: SecondarySwipeDirection,
+) {
+  const group = PRIMARY_TAB_GROUPS.find((entry) =>
+    entry.routes.includes(routeName),
+  );
+
+  if (!group || group.routes.length < 2) {
+    return null;
+  }
+
+  const routeIndex = group.routes.indexOf(routeName);
+
+  if (routeIndex === -1) {
+    return null;
+  }
+
+  const nextIndex = routeIndex + (direction === "left" ? 1 : -1);
+
+  return group.routes[nextIndex] ?? null;
 }

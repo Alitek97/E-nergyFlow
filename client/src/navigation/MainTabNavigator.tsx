@@ -111,6 +111,7 @@ export default function MainTabNavigator() {
       initialRouteName={initialRouteName}
       screenOptions={{
         headerShown: false,
+        lazy: false,
         tabBarStyle: createTabBarStyle(tabBarHeight),
       }}
       tabBar={(props) => {

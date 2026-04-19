@@ -55,6 +55,28 @@ type ReportsNavigation = NativeStackNavigationProp<
   ReportsStackParamList,
   "Reports"
 >;
+type ReportsScreenCache = {
+  allDays: DayData[];
+  currentMonth: string;
+  currentMonthStats: MonthSummary | null;
+  previousMonthsList: MonthListItem[];
+  userId: string | null;
+};
+
+let reportsScreenCache: ReportsScreenCache | null = null;
+
+function getCachedReportsScreenData(userId: string | null, currentMonth: string) {
+  if (
+    !reportsScreenCache ||
+    reportsScreenCache.userId !== userId ||
+    reportsScreenCache.currentMonth !== currentMonth
+  ) {
+    return null;
+  }
+
+  return reportsScreenCache;
+}
+
 const ENABLE_POWER_GRID_BG = true;
 const ENABLE_ENERGY_FLOW = true;
 const ENABLE_SCADA_GRID = true;
@@ -78,21 +100,27 @@ export default function ReportsScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<ReportsNavigation>();
 
-  const [allDays, setAllDays] = useState<DayData[]>([]);
-  const [currentMonthStats, setCurrentMonthStats] =
-    useState<MonthSummary | null>(null);
-  const [previousMonthsList, setPreviousMonthsList] = useState<MonthListItem[]>(
-    [],
-  );
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-  const [monthModalVisible, setMonthModalVisible] = useState(false);
-
   const currentMonth = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   }, []);
+  const cachedReportsData = useMemo(
+    () => getCachedReportsScreenData(user?.id ?? null, currentMonth),
+    [currentMonth, user?.id],
+  );
+
+  const [allDays, setAllDays] = useState<DayData[]>(
+    () => cachedReportsData?.allDays ?? [],
+  );
+  const [currentMonthStats, setCurrentMonthStats] =
+    useState<MonthSummary | null>(() => cachedReportsData?.currentMonthStats ?? null);
+  const [previousMonthsList, setPreviousMonthsList] = useState<MonthListItem[]>(
+    () => cachedReportsData?.previousMonthsList ?? [],
+  );
+  const [loading, setLoading] = useState(() => !cachedReportsData);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [monthModalVisible, setMonthModalVisible] = useState(false);
 
   const scrollContentContainerStyle = useMemo<ViewStyle>(
     () => ({
@@ -120,33 +148,33 @@ export default function ReportsScreen() {
         setLoading(true);
       }
       try {
+        let resolvedAllDays: DayData[] = [];
+        let resolvedCurrentMonthStats: MonthSummary | null = null;
+        let resolvedPreviousMonthsList: MonthListItem[] = [];
+
         if (user?.id) {
           const [recentDays, monthsList] = await Promise.all([
             fetchRecentDaysFullFromSupabase(user.id, 7),
             fetchMonthsListFromSupabase(user.id),
           ]);
-          setAllDays(recentDays);
+          resolvedAllDays = recentDays;
 
           const currentMonthItem = monthsList.find(
             (m) => m.month === currentMonth,
           );
-          const previousMonths = monthsList.filter(
+          resolvedPreviousMonthsList = monthsList.filter(
             (m) => m.month !== currentMonth,
           );
-          setPreviousMonthsList(previousMonths);
 
           if (currentMonthItem) {
-            const currentStats = await fetchSingleMonthFromSupabase(
+            resolvedCurrentMonthStats = await fetchSingleMonthFromSupabase(
               user.id,
               currentMonth,
             );
-            setCurrentMonthStats(currentStats);
-          } else {
-            setCurrentMonthStats(null);
           }
         } else {
           const localDays = await getAllDaysData();
-          setAllDays(localDays);
+          resolvedAllDays = localDays;
 
           const monthMap = new Map<
             string,
@@ -183,11 +211,24 @@ export default function ReportsScreen() {
             (m) => m.month !== currentMonth,
           );
 
-          setCurrentMonthStats(currentMonthLocal || null);
-          setPreviousMonthsList(
-            previousMonthsLocal.map((m) => ({ month: m.month, days: m.days })),
-          );
+          resolvedCurrentMonthStats = currentMonthLocal || null;
+          resolvedPreviousMonthsList = previousMonthsLocal.map((m) => ({
+            month: m.month,
+            days: m.days,
+          }));
         }
+
+        setAllDays(resolvedAllDays);
+        setCurrentMonthStats(resolvedCurrentMonthStats);
+        setPreviousMonthsList(resolvedPreviousMonthsList);
+        reportsScreenCache = {
+          allDays: resolvedAllDays,
+          currentMonth,
+          currentMonthStats: resolvedCurrentMonthStats,
+          previousMonthsList: resolvedPreviousMonthsList,
+          userId: user?.id ?? null,
+        };
+
         if (showRefreshFeedback) {
           showSuccess(t("data_updated"));
         }
