@@ -22,7 +22,10 @@ import { ThemedText } from "@/components/ThemedText";
 import { BorderRadius, Spacing, withAlpha } from "@/constants/theme";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTheme } from "@/hooks/useTheme";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveValue,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import {
   formatOperatingTimeDisplay,
   OPERATING_MINUTE_STEPS,
@@ -198,6 +201,18 @@ export function HoursPickerSheet({
     onDone(toOperatingTimeValue(draftHour, draftMinute));
   }, [draftHour, draftMinute, onDone]);
 
+  const sheetWidth = Math.min(
+    layout.contentWidth,
+    getResponsiveValue(layout, {
+      compactPhone: layout.contentWidth,
+      largePhone: layout.contentWidth,
+      widePhone: 520,
+      tablet: layout.isLandscape ? 720 : 620,
+      largeTablet: layout.isLandscape ? 760 : 660,
+      default: layout.contentWidth,
+    }),
+  );
+
   return (
     <Modal
       visible={visible}
@@ -208,7 +223,7 @@ export function HoursPickerSheet({
       <Pressable
         style={[
           styles.overlay,
-          layout.isTablet && styles.overlayTablet,
+          layout.isWideLayout && styles.overlayTablet,
           { backgroundColor: withAlpha(theme.backgroundRoot, 0.62) },
         ]}
         onPress={onCancel}
@@ -217,17 +232,12 @@ export function HoursPickerSheet({
           onPress={(event) => event.stopPropagation()}
           style={[
             styles.sheet,
-            layout.isTablet && styles.sheetTablet,
+            layout.isWideLayout && styles.sheetTablet,
             {
               backgroundColor: theme.backgroundDefault,
               borderTopColor: theme.borderStrong,
               paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.md,
-              width: layout.isTablet
-                ? Math.min(
-                    layout.contentMaxWidth,
-                    layout.isLandscape ? 720 : 620,
-                  )
-                : undefined,
+              width: sheetWidth,
             },
           ]}
         >
@@ -450,6 +460,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     gap: Spacing.md,
+    maxWidth: "100%",
   },
   sheetTablet: {
     alignSelf: "center",

@@ -68,7 +68,8 @@ const SEGMENT_HIGHLIGHT_INSET = 2;
 const BOTTOM_HIGHLIGHT_INSET = 2;
 const SECONDARY_BAR_OFFSET = 14;
 const SECONDARY_SHOW_DURATION_MS = 220;
-const SECONDARY_HIDE_DURATION_MS = 190;
+const SECONDARY_HIDE_DURATION_MS = 220;
+const SECONDARY_AUTO_HIDE_DELAY_MS = 3000;
 
 export default function FocusedTileTabBar({
   primaryGroups,
@@ -96,8 +97,14 @@ export default function FocusedTileTabBar({
     null,
   );
   const secondaryProgress = useRef(new Animated.Value(0)).current;
+  const secondaryAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const pendingPrimaryNavigationGroupRef = useRef<MainTabGroupId | null>(null);
   const latestSecondaryGroupRef = useRef<MainTabGroupId | null>(null);
+  const setSecondaryVisibilityRef = useRef<
+    (nextGroupId: MainTabGroupId | null) => void
+  >(() => {});
   const palette = useMemo(() => {
     const primaryBar = theme.tabBarBg;
     const secondaryBar = mixColors(
@@ -254,6 +261,22 @@ export default function FocusedTileTabBar({
     outputRange: [SECONDARY_BAR_OFFSET, 0],
   });
 
+  const clearSecondaryAutoHideTimer = useCallback(() => {
+    if (secondaryAutoHideTimerRef.current === null) {
+      return;
+    }
+
+    clearTimeout(secondaryAutoHideTimerRef.current);
+    secondaryAutoHideTimerRef.current = null;
+  }, []);
+
+  const scheduleSecondaryAutoHide = useCallback(() => {
+    clearSecondaryAutoHideTimer();
+    secondaryAutoHideTimerRef.current = setTimeout(() => {
+      setSecondaryVisibilityRef.current(null);
+    }, SECONDARY_AUTO_HIDE_DELAY_MS);
+  }, [clearSecondaryAutoHideTimer]);
+
   const setSecondaryVisibility = useCallback(
     (nextGroupId: MainTabGroupId | null) => {
       const resolvedGroupId =
@@ -262,6 +285,7 @@ export default function FocusedTileTabBar({
           : null;
 
       latestSecondaryGroupRef.current = resolvedGroupId;
+      clearSecondaryAutoHideTimer();
 
       if (resolvedGroupId) {
         setSegmentGroupId((currentGroupId) =>
@@ -279,16 +303,23 @@ export default function FocusedTileTabBar({
           : SECONDARY_HIDE_DURATION_MS,
         easing: isShowing
           ? Easing.out(Easing.bezier(0.22, 1, 0.36, 1))
-          : Easing.inOut(Easing.ease),
+          : Easing.inOut(Easing.cubic),
         useNativeDriver: false,
       }).start(({ finished }) => {
         if (finished && latestSecondaryGroupRef.current === null) {
           setSegmentGroupId(null);
         }
       });
+
+      if (resolvedGroupId) {
+        scheduleSecondaryAutoHide();
+      }
     },
-    [secondaryProgress],
+    [clearSecondaryAutoHideTimer, scheduleSecondaryAutoHide, secondaryProgress],
   );
+  setSecondaryVisibilityRef.current = setSecondaryVisibility;
+
+  useEffect(() => clearSecondaryAutoHideTimer, [clearSecondaryAutoHideTimer]);
 
   useEffect(() => {
     if (activeGroupId === "settings") {

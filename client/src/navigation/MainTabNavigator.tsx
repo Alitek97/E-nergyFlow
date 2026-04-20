@@ -14,7 +14,10 @@ import {
 } from "@/navigation/hybridTabConfig";
 import { useTheme } from "@/hooks/useTheme";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveValue,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 
 export type MainTabParamList = {
   FeedersTab: undefined;
@@ -75,36 +78,56 @@ export default function MainTabNavigator() {
       })),
     [t],
   );
-  const iconSize = layout.isPhone ? 21 : layout.isLargeTablet ? 24 : 22;
-  const labelSize = layout.isPhone
-    ? isRTL
-      ? 10.7
-      : 11.7
-    : layout.isLargeTablet
-      ? 12.6
-      : 12.1;
-  const collapsedDockHeight = layout.isPhone
-    ? 86
-    : layout.isLargeTablet
-      ? 96
-      : 90;
-  const segmentedRowHeight = layout.isPhone
-    ? 44
-    : layout.isLargeTablet
-      ? 48
-      : 46;
+  const iconSize = getResponsiveValue(layout, {
+    compactPhone: 20,
+    largePhone: 21,
+    widePhone: 22,
+    tablet: 22,
+    largeTablet: 24,
+    default: 21,
+  });
+  const labelSize = getResponsiveValue(layout, {
+    compactPhone: isRTL ? 10.3 : 11.1,
+    largePhone: isRTL ? 10.7 : 11.7,
+    widePhone: isRTL ? 11.2 : 12,
+    tablet: 12.1,
+    largeTablet: 12.6,
+    default: isRTL ? 10.7 : 11.7,
+  });
+  const collapsedDockHeight = getResponsiveValue(layout, {
+    compactPhone: 82,
+    largePhone: 86,
+    widePhone: 88,
+    tablet: 90,
+    largeTablet: 96,
+    default: 86,
+  });
+  const segmentedRowHeight = getResponsiveValue(layout, {
+    compactPhone: 42,
+    largePhone: 44,
+    widePhone: 45,
+    tablet: 46,
+    largeTablet: 48,
+    default: 44,
+  });
   const tabBarBottomPadding = layout.isIOS
     ? Math.max(insets.bottom, 10)
-    : layout.isPhone
-      ? 8
-      : 10;
+    : layout.isWideLayout
+      ? 10
+      : 8;
   const tabBarHeight =
     collapsedDockHeight + segmentedRowHeight + 18 + tabBarBottomPadding;
-  const maxContentWidth = layout.isLargeTablet
-    ? 520
-    : layout.isTablet
-      ? 440
-      : Math.min(layout.screenWidth - 2 * 16, 392);
+  const maxContentWidth = Math.min(
+    layout.contentWidth,
+    getResponsiveValue(layout, {
+      compactPhone: 344,
+      largePhone: 392,
+      widePhone: 468,
+      tablet: layout.isLandscape ? 520 : 468,
+      largeTablet: layout.isLandscape ? 620 : 520,
+      default: 392,
+    }),
+  );
 
   return (
     <Tab.Navigator

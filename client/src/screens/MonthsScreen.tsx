@@ -22,7 +22,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveScrollContentStyle,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import { useTheme } from "@/hooks/useTheme";
 import type { ReportsStackParamList } from "@/navigation/ReportsStackNavigator";
 import { getAllDaysData } from "@/lib/storage";
@@ -59,6 +62,7 @@ export default function MonthsScreen() {
   const { unitsConfig } = useUnits();
   const { rtlRow } = useRTL();
   const layout = useResponsiveLayout();
+  const columnCount = layout.isWideLayout ? 2 : 1;
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -108,21 +112,14 @@ export default function MonthsScreen() {
   }, [loadMonths]);
 
   const contentStyle = useMemo(
-    () => ({
-      paddingTop: headerHeight + Spacing.lg,
-      paddingBottom: tabBarHeight + Spacing.xl,
-      paddingHorizontal: layout.horizontalPadding,
-      maxWidth: layout.isTablet ? layout.contentMaxWidth : undefined,
-      alignSelf: layout.isTablet ? ("center" as const) : undefined,
-      width: layout.isTablet ? ("100%" as const) : undefined,
-    }),
-    [
-      headerHeight,
-      tabBarHeight,
-      layout.horizontalPadding,
-      layout.isTablet,
-      layout.contentMaxWidth,
-    ],
+    () =>
+      getResponsiveScrollContentStyle(layout, {
+        headerHeight,
+        tabBarHeight,
+        topSpacing: Spacing.lg,
+        bottomSpacing: Spacing.xl,
+      }),
+    [headerHeight, layout, tabBarHeight],
   );
 
   return (
@@ -134,9 +131,12 @@ export default function MonthsScreen() {
         </View>
       ) : (
         <FlatList
+          key={columnCount}
           data={months}
+          numColumns={columnCount}
           keyExtractor={(item) => item.key}
           contentContainerStyle={contentStyle}
+          columnWrapperStyle={columnCount > 1 ? styles.gridRow : undefined}
           scrollIndicatorInsets={{ bottom: insets.bottom }}
           renderItem={({ item }) =>
             (() => {
@@ -162,130 +162,140 @@ export default function MonthsScreen() {
                 precision: "adaptive",
               });
               return (
-                <Pressable
+                <View
                   style={[
-                    styles.card,
-                    {
-                      backgroundColor: theme.backgroundDefault,
-                      borderColor: theme.border,
-                    },
+                    styles.gridItem,
+                    columnCount > 1 && styles.gridItemWide,
                   ]}
-                  onPress={() =>
-                    navigation.navigate("MonthDaysScreen", {
-                      monthKey: item.key,
-                    })
-                  }
                 >
-                  <View style={[styles.rowTop, rtlRow]}>
-                    <View style={[styles.rowTitle, rtlRow]}>
-                      <View
-                        style={[
-                          styles.iconCircle,
-                          { backgroundColor: theme.primary + "20" },
-                        ]}
-                      >
-                        <Feather
-                          name="calendar"
-                          size={14}
-                          color={theme.primary}
-                        />
-                      </View>
-                      <ThemedText semanticVariant="labelPrimary">
-                        {monthLabel(item.key, isRTL)}
-                      </ThemedText>
-                      <NumberText
-                        size="small"
-                        style={{ color: theme.textSecondary }}
-                      >
-                        {item.year}
-                      </NumberText>
-                    </View>
-                    <View
-                      style={[
-                        styles.daysBadge,
-                        { backgroundColor: theme.backgroundSecondary },
-                      ]}
-                    >
-                      <View style={[styles.inlineCount, rtlRow]}>
+                  <Pressable
+                    style={[
+                      styles.card,
+                      {
+                        backgroundColor: theme.backgroundDefault,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                    onPress={() =>
+                      navigation.navigate("MonthDaysScreen", {
+                        monthKey: item.key,
+                      })
+                    }
+                  >
+                    <View style={[styles.rowTop, rtlRow]}>
+                      <View style={[styles.rowTitle, rtlRow]}>
+                        <View
+                          style={[
+                            styles.iconCircle,
+                            { backgroundColor: theme.primary + "20" },
+                          ]}
+                        >
+                          <Feather
+                            name="calendar"
+                            size={14}
+                            color={theme.primary}
+                          />
+                        </View>
+                        <ThemedText semanticVariant="labelPrimary">
+                          {monthLabel(item.key, isRTL)}
+                        </ThemedText>
                         <NumberText
                           size="small"
                           style={{ color: theme.textSecondary }}
                         >
-                          {item.countDays}
+                          {item.year}
                         </NumberText>
-                        <ThemedText
-                          semanticVariant="helper"
-                          style={{ color: theme.textSecondary }}
-                        >
-                          {item.countDays !== 1
-                            ? t("days_plural")
-                            : t("day_singular")}
-                        </ThemedText>
+                      </View>
+                      <View
+                        style={[
+                          styles.daysBadge,
+                          { backgroundColor: theme.backgroundSecondary },
+                        ]}
+                      >
+                        <View style={[styles.inlineCount, rtlRow]}>
+                          <NumberText
+                            size="small"
+                            style={{ color: theme.textSecondary }}
+                          >
+                            {item.countDays}
+                          </NumberText>
+                          <ThemedText
+                            semanticVariant="helper"
+                            style={{ color: theme.textSecondary }}
+                          >
+                            {item.countDays !== 1
+                              ? t("days_plural")
+                              : t("day_singular")}
+                          </ThemedText>
+                        </View>
                       </View>
                     </View>
-                  </View>
 
-                  <View
-                    style={[styles.statsRow, { borderTopColor: theme.border }]}
-                  >
-                    <View style={styles.statItem}>
-                      <View
-                        style={[
-                          styles.statDot,
-                          { backgroundColor: theme.success },
-                        ]}
-                      />
-                      <ThemedText
-                        semanticVariant="tableHeader"
-                        style={{ color: theme.textSecondary }}
-                      >
-                        {t("production")}
-                      </ThemedText>
-                      <ValueWithUnit
-                        value={productionText.valueText}
-                        unit={productionText.unitText}
-                      />
+                    <View
+                      style={[
+                        styles.statsRow,
+                        { borderTopColor: theme.border },
+                      ]}
+                    >
+                      <View style={styles.statItem}>
+                        <View
+                          style={[
+                            styles.statDot,
+                            { backgroundColor: theme.success },
+                          ]}
+                        />
+                        <ThemedText
+                          semanticVariant="tableHeader"
+                          style={{ color: theme.textSecondary }}
+                        >
+                          {t("production")}
+                        </ThemedText>
+                        <ValueWithUnit
+                          value={productionText.valueText}
+                          unit={productionText.unitText}
+                        />
+                      </View>
+                      <View style={styles.statItem}>
+                        <View
+                          style={[
+                            styles.statDot,
+                            { backgroundColor: flowStyle.color },
+                          ]}
+                        />
+                        <ThemedText
+                          semanticVariant="tableHeader"
+                          style={{ color: theme.textSecondary }}
+                        >
+                          {flowStyle.text}
+                        </ThemedText>
+                        <ValueWithUnit
+                          value={flowText.valueText}
+                          unit={flowText.unitText}
+                          valueStyle={{ color: flowStyle.color }}
+                        />
+                      </View>
+                      <View style={styles.statItem}>
+                        <View
+                          style={[
+                            styles.statDot,
+                            { backgroundColor: theme.warning },
+                          ]}
+                        />
+                        <ThemedText
+                          semanticVariant="tableHeader"
+                          style={{ color: theme.textSecondary }}
+                        >
+                          {t("consumption")}
+                        </ThemedText>
+                        <ValueWithUnit
+                          value={consumptionText.valueText}
+                          unit={consumptionText.unitText}
+                          valueStyle={{ color: theme.warning }}
+                        />
+                      </View>
                     </View>
-                    <View style={styles.statItem}>
-                      <View
-                        style={[
-                          styles.statDot,
-                          { backgroundColor: flowStyle.color },
-                        ]}
-                      />
-                      <ThemedText
-                        semanticVariant="tableHeader"
-                        style={{ color: theme.textSecondary }}
-                      >
-                        {flowStyle.text}
-                      </ThemedText>
-                      <ValueWithUnit
-                        value={flowText.valueText}
-                        unit={flowText.unitText}
-                        valueStyle={{ color: flowStyle.color }}
-                      />
-                    </View>
-                    <View style={styles.statItem}>
-                      <View
-                        style={[
-                          styles.statDot,
-                          { backgroundColor: theme.warning },
-                        ]}
-                      />
-                      <ThemedText
-                        semanticVariant="tableHeader"
-                        style={{ color: theme.textSecondary }}
-                      >
-                        {t("consumption")}
-                      </ThemedText>
-                      <ValueWithUnit
-                        value={consumptionText.valueText}
-                        unit={consumptionText.unitText}
-                        valueStyle={{ color: theme.warning }}
-                      />
-                    </View>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </View>
               );
             })()
           }
@@ -313,6 +323,15 @@ export default function MonthsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, overflow: "hidden" },
   loaderWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  gridRow: {
+    gap: Spacing.md,
+  },
+  gridItem: {
+    width: "100%",
+  },
+  gridItemWide: {
+    flex: 1,
+  },
   card: {
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
@@ -353,12 +372,14 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     borderTopWidth: 1,
     padding: Spacing.lg,
     gap: Spacing.md,
   },
   statItem: {
     flex: 1,
+    minWidth: 120,
     alignItems: "center",
     gap: Spacing.xs,
   },

@@ -19,7 +19,10 @@ import { Spacing, BorderRadius } from "@/constants/theme";
 import { formatDateKey } from "@/lib/storage";
 import { getShiftForDate } from "@/lib/shift";
 import { FONT_FAMILIES } from "@/theme/fonts";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveValue,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 
 interface CalendarPickerProps {
   selectedDate: string;
@@ -47,6 +50,17 @@ export function CalendarPicker({
   const { t, isRTL } = useLanguage();
   const layout = useResponsiveLayout();
   const isTitleRTL = I18nManager.isRTL || isRTL;
+  const containerWidth = Math.min(
+    layout.contentWidth,
+    getResponsiveValue(layout, {
+      compactPhone: 320,
+      largePhone: 356,
+      widePhone: 440,
+      tablet: layout.isLandscape ? 740 : 600,
+      largeTablet: layout.isLandscape ? 780 : 640,
+      default: 340,
+    }),
+  );
 
   const weekdays = useMemo(
     () => [
@@ -181,9 +195,7 @@ export function CalendarPicker({
           backgroundColor: theme.backgroundDefault,
           borderColor: theme.borderStrong,
           shadowColor: theme.cardShadow,
-          width: layout.isTablet
-            ? Math.min(layout.contentMaxWidth, layout.isLandscape ? 740 : 600)
-            : 340,
+          width: containerWidth,
         },
       ]}
     >
@@ -498,6 +510,7 @@ const styles = StyleSheet.create({
   selectedInfo: {
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     marginTop: Spacing.lg,

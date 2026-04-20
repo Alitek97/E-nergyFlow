@@ -11,6 +11,7 @@ import {
   Pressable,
   Modal,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import PressableScale from "@/components/ui/PressableScale";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,7 +31,11 @@ import { CalendarPicker } from "@/components/CalendarPicker";
 import { NumericInputField } from "@/components/NumericInputField";
 import { DashboardBackdrop } from "@/components/visual/DashboardBackdrop";
 import { useTheme } from "@/hooks/useTheme";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveScrollContentStyle,
+  getResponsiveValue,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import { BorderRadius, Shadows, Spacing, withAlpha } from "@/constants/theme";
 import { useDay } from "@/contexts/DayContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -65,6 +70,35 @@ export default function FeedersScreen() {
     [isRTL],
   );
   const { rtlRow } = useRTL();
+  const showWideGrid = layout.isWideLayout;
+  const scrollContentStyle = useMemo(
+    () =>
+      getResponsiveScrollContentStyle(layout, {
+        headerHeight,
+        tabBarHeight,
+        topSpacing: Spacing.lg,
+        bottomSpacing: Spacing.xl,
+      }),
+    [headerHeight, layout, tabBarHeight],
+  );
+  const datePickerModalWidth = Math.min(
+    layout.contentWidth,
+    getResponsiveValue(layout, {
+      compactPhone: 320,
+      largePhone: 360,
+      widePhone: 440,
+      tablet: layout.isLandscape ? 760 : 620,
+      largeTablet: layout.isLandscape ? 800 : 680,
+      default: 360,
+    }),
+  );
+  const summaryTableMinWidth = getResponsiveValue(layout, {
+    compactPhone: 460,
+    largePhone: 500,
+    widePhone: layout.contentWidth,
+    tablet: layout.contentWidth,
+    default: layout.contentWidth,
+  });
 
   const rows = useMemo(() => {
     return FEEDERS.map((f) => {
@@ -264,14 +298,7 @@ export default function FeedersScreen() {
       <DashboardBackdrop intensity="subtle" />
       <KeyboardAwareScrollViewCompat
         style={styles.scrollView}
-        contentContainerStyle={{
-          paddingTop: headerHeight + Spacing.lg,
-          paddingBottom: tabBarHeight + Spacing.xl,
-          paddingHorizontal: layout.horizontalPadding,
-          maxWidth: layout.isTablet ? layout.contentMaxWidth : undefined,
-          alignSelf: layout.isTablet ? "center" : undefined,
-          width: layout.isTablet ? "100%" : undefined,
-        }}
+        contentContainerStyle={scrollContentStyle}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
       >
         <View style={styles.headerRow}>
@@ -348,13 +375,19 @@ export default function FeedersScreen() {
             <View
               style={[
                 styles.controlBar,
+                layout.isCompactPhone && styles.controlBarCompact,
                 rtlRow,
                 {
                   backgroundColor: theme.backgroundDefault,
                 },
               ]}
             >
-              <View style={styles.controlBarShiftPane}>
+              <View
+                style={[
+                  styles.controlBarShiftPane,
+                  layout.isCompactPhone && styles.controlBarShiftPaneCompact,
+                ]}
+              >
                 <View
                   style={[
                     styles.controlSegment,
@@ -367,8 +400,8 @@ export default function FeedersScreen() {
                 >
                   <ThemedText
                     semanticVariant="tableCellLabel"
-                    numberOfLines={1}
                     adjustsFontSizeToFit
+                    numberOfLines={1}
                     minimumFontScale={0.8}
                     style={{ color: theme.textSecondary }}
                   >
@@ -376,7 +409,13 @@ export default function FeedersScreen() {
                   </ThemedText>
                 </View>
               </View>
-              <View style={[styles.controlBarActionsPane, rtlRow]}>
+              <View
+                style={[
+                  styles.controlBarActionsPane,
+                  layout.isCompactPhone && styles.controlBarActionsPaneCompact,
+                  rtlRow,
+                ]}
+              >
                 <View style={styles.controlBarActionSlot}>
                   <PressableScale
                     style={[
@@ -542,14 +581,9 @@ export default function FeedersScreen() {
               onPress={(e) => e.stopPropagation()}
               style={[
                 styles.datePickerModal,
-                layout.isTablet && styles.datePickerModalTablet,
+                showWideGrid && styles.datePickerModalTablet,
                 {
-                  width: layout.isTablet
-                    ? Math.min(
-                        layout.contentMaxWidth,
-                        layout.isLandscape ? 760 : 620,
-                      )
-                    : undefined,
+                  width: datePickerModalWidth,
                 },
               ]}
             >
@@ -592,7 +626,7 @@ export default function FeedersScreen() {
             </ThemedText>
           </View>
 
-          <View style={layout.isTablet ? styles.tabletGrid : undefined}>
+          <View style={showWideGrid ? styles.tabletGrid : undefined}>
             {FEEDERS.map((f, index) => {
               const row = rows[index];
               return (
@@ -601,7 +635,7 @@ export default function FeedersScreen() {
                   entering={FadeInDown.delay(index * 50).duration(300)}
                   style={[
                     styles.feederRow,
-                    layout.isTablet && styles.tabletFeederRow,
+                    showWideGrid && styles.tabletFeederRow,
                     {
                       borderColor: row.isStopped
                         ? theme.warning + "40"
@@ -863,66 +897,23 @@ export default function FeedersScreen() {
             </ThemedText>
           </View>
 
-          <View
-            style={[
-              styles.summaryHeaderRow,
-              { borderBottomColor: theme.border },
-            ]}
+          <ScrollView
+            horizontal={!showWideGrid}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={
+              !showWideGrid ? styles.summaryTableScroll : undefined
+            }
           >
-            {displayFeederSummaryCols.map((col) => (
+            <View
+              style={[
+                styles.summaryTable,
+                !showWideGrid && { minWidth: summaryTableMinWidth },
+              ]}
+            >
               <View
-                key={col.key}
-                style={[styles.summaryCell, { flex: col.flex }]}
-              >
-                <ThemedText
-                  semanticVariant="tableHeader"
-                  numberOfLines={1}
-                  style={[
-                    styles.summaryHeaderText,
-                    { color: theme.textSecondary, textAlign: "center" },
-                  ]}
-                >
-                  {col.label}
-                </ThemedText>
-              </View>
-            ))}
-          </View>
-
-          {rows.map((r, index) => {
-            const values = {
-              meter: r.f,
-              start:
-                r.start === null
-                  ? "-"
-                  : formatNumber(r.start, {
-                      decimals: 2,
-                      thousandsSeparator: true,
-                    }),
-              end:
-                r.end === null
-                  ? "-"
-                  : formatNumber(r.end, {
-                      decimals: 2,
-                      thousandsSeparator: true,
-                    }),
-              diff:
-                r.diff === null
-                  ? "-"
-                  : formatNumber(r.diff, {
-                      decimals: 2,
-                      thousandsSeparator: true,
-                    }),
-            } as const;
-
-            return (
-              <View
-                key={r.f}
                 style={[
-                  styles.summaryDataRow,
-                  index < rows.length - 1 && {
-                    borderBottomWidth: 1,
-                    borderBottomColor: theme.border,
-                  },
+                  styles.summaryHeaderRow,
+                  { borderBottomColor: theme.border },
                 ]}
               >
                 {displayFeederSummaryCols.map((col) => (
@@ -930,40 +921,98 @@ export default function FeedersScreen() {
                     key={col.key}
                     style={[styles.summaryCell, { flex: col.flex }]}
                   >
-                    {col.key === "meter" ? (
-                      <View
-                        style={[
-                          styles.feederBadgeSmall,
-                          { backgroundColor: theme.primary + "20" },
-                        ]}
-                      >
-                        <FeederCode
-                          code={values.meter}
-                          style={[
-                            styles.feederBadgeCodeSmall,
-                            { color: theme.primary },
-                          ]}
-                        />
-                      </View>
-                    ) : (
-                      <NumberText
-                        tier="summary"
-                        numberOfLines={1}
-                        style={[
-                          styles.summaryValueText,
-                          col.key === "diff"
-                            ? { color: theme.primary }
-                            : { color: theme.text },
-                        ]}
-                      >
-                        {values[col.key]}
-                      </NumberText>
-                    )}
+                    <ThemedText
+                      semanticVariant="tableHeader"
+                      numberOfLines={1}
+                      style={[
+                        styles.summaryHeaderText,
+                        { color: theme.textSecondary, textAlign: "center" },
+                      ]}
+                    >
+                      {col.label}
+                    </ThemedText>
                   </View>
                 ))}
               </View>
-            );
-          })}
+
+              {rows.map((r, index) => {
+                const values = {
+                  meter: r.f,
+                  start:
+                    r.start === null
+                      ? "-"
+                      : formatNumber(r.start, {
+                          decimals: 2,
+                          thousandsSeparator: true,
+                        }),
+                  end:
+                    r.end === null
+                      ? "-"
+                      : formatNumber(r.end, {
+                          decimals: 2,
+                          thousandsSeparator: true,
+                        }),
+                  diff:
+                    r.diff === null
+                      ? "-"
+                      : formatNumber(r.diff, {
+                          decimals: 2,
+                          thousandsSeparator: true,
+                        }),
+                } as const;
+
+                return (
+                  <View
+                    key={r.f}
+                    style={[
+                      styles.summaryDataRow,
+                      index < rows.length - 1 && {
+                        borderBottomWidth: 1,
+                        borderBottomColor: theme.border,
+                      },
+                    ]}
+                  >
+                    {displayFeederSummaryCols.map((col) => (
+                      <View
+                        key={col.key}
+                        style={[styles.summaryCell, { flex: col.flex }]}
+                      >
+                        {col.key === "meter" ? (
+                          <View
+                            style={[
+                              styles.feederBadgeSmall,
+                              { backgroundColor: theme.primary + "20" },
+                            ]}
+                          >
+                            <FeederCode
+                              code={values.meter}
+                              style={[
+                                styles.feederBadgeCodeSmall,
+                                { color: theme.primary },
+                              ]}
+                            />
+                          </View>
+                        ) : (
+                          <NumberText
+                            tier="summary"
+                            numberOfLines={1}
+                            style={[
+                              styles.summaryValueText,
+                              col.key === "diff"
+                                ? { color: theme.primary }
+                                : { color: theme.text },
+                            ]}
+                          >
+                            {values[col.key]}
+                          </NumberText>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
         </Animated.View>
       </KeyboardAwareScrollViewCompat>
     </View>
@@ -1011,6 +1060,10 @@ const styles = StyleSheet.create({
     padding: 0,
     gap: Spacing.sm,
   },
+  controlBarCompact: {
+    alignItems: "stretch",
+    flexWrap: "wrap",
+  },
   headerDivider: {
     height: 1,
     width: "100%",
@@ -1019,10 +1072,16 @@ const styles = StyleSheet.create({
   controlBarShiftPane: {
     flex: 1,
   },
+  controlBarShiftPaneCompact: {
+    flexBasis: "100%",
+  },
   controlBarActionsPane: {
     flex: 1,
     flexDirection: "row",
     gap: Spacing.sm,
+  },
+  controlBarActionsPaneCompact: {
+    width: "100%",
   },
   controlBarActionSlot: {
     flex: 1,
@@ -1292,6 +1351,12 @@ const styles = StyleSheet.create({
   summaryValueText: {
     textAlign: "center",
     fontVariant: ["tabular-nums", "lining-nums"],
+  },
+  summaryTable: {
+    width: "100%",
+  },
+  summaryTableScroll: {
+    minWidth: "100%",
   },
   inlineNumericValue: {
     textAlign: "center",

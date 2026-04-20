@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -28,7 +28,10 @@ import { BorderRadius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveScrollContentStyle,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import { useRTL } from "@/hooks/useRTL";
 import { useScadaEffects } from "@/hooks/useScadaEffects";
 import { useTheme } from "@/hooks/useTheme";
@@ -61,16 +64,19 @@ function SettingsRow({
   valueWritingDirection,
   trailingAccessory,
 }: SettingsRowProps) {
+  const layout = useResponsiveLayout();
   const content = (
     <View
       style={[
         styles.settingsRow,
+        layout.isCompactPhone && styles.settingsRowCompact,
         { flexDirection: isRTL ? "row-reverse" : "row" },
       ]}
     >
       <View
         style={[
           styles.settingsRowStart,
+          layout.isCompactPhone && styles.settingsRowStartCompact,
           { flexDirection: isRTL ? "row-reverse" : "row" },
         ]}
       >
@@ -106,6 +112,8 @@ function SettingsRow({
       <View
         style={[
           styles.settingsRowEnd,
+          layout.isCompactPhone && styles.settingsRowEndCompact,
+          layout.isWideLayout && styles.settingsRowEndWide,
           { flexDirection: isRTL ? "row-reverse" : "row" },
         ]}
       >
@@ -206,6 +214,7 @@ export default function SettingsScreen() {
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const layout = useResponsiveLayout();
+  const showWideLayout = layout.isWideLayout;
   const { t, language, isRTL } = useLanguage();
   const { unitsConfig } = useUnits();
   const { scadaEffectsEnabled, setScadaEffectsEnabled } = useScadaEffects();
@@ -224,6 +233,16 @@ export default function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const appVersion = Constants.expoConfig?.version || "1.0.0";
+  const scrollContentStyle = useMemo(
+    () =>
+      getResponsiveScrollContentStyle(layout, {
+        headerHeight,
+        tabBarHeight,
+        topSpacing: Spacing.lg,
+        bottomSpacing: Spacing.xl,
+      }),
+    [headerHeight, layout, tabBarHeight],
+  );
   const displayValue = profile?.displayName?.trim()
     ? profile.displayName
     : (user?.email ?? "");
@@ -688,14 +707,7 @@ export default function SettingsScreen() {
       <DashboardBackdrop intensity="subtle" />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{
-          paddingTop: headerHeight + Spacing.lg,
-          paddingBottom: tabBarHeight + Spacing.xl,
-          paddingHorizontal: layout.horizontalPadding,
-          maxWidth: layout.isTablet ? layout.contentMaxWidth : undefined,
-          alignSelf: layout.isTablet ? "center" : undefined,
-          width: layout.isTablet ? "100%" : undefined,
-        }}
+        contentContainerStyle={scrollContentStyle}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -773,220 +785,257 @@ export default function SettingsScreen() {
             ? renderGuestSection()
             : renderLoggedInSection()}
 
-        <Animated.View entering={FadeInDown.duration(300)}>
-          <SettingsSection
-            title={t("language")}
-            subtitle={t("settings_language_subtitle")}
+        <View
+          style={[
+            styles.sectionsGrid,
+            showWideLayout && styles.sectionsGridWide,
+          ]}
+        >
+          <Animated.View
+            entering={FadeInDown.duration(300)}
+            style={[
+              styles.sectionGridItem,
+              showWideLayout && styles.sectionGridItemWide,
+            ]}
           >
-            <View
-              style={[
-                styles.card,
-                {
-                  backgroundColor: theme.backgroundDefault,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={styles.groupedRow}>
-                <SettingsRow
-                  icon="globe"
-                  title={t("language")}
-                  subtitle={t("select_language")}
-                  value={currentLanguageLabel}
-                  isRTL={isRTL}
-                  theme={theme}
-                  onPress={() => navigation.navigate("LanguageSettings")}
-                />
-              </View>
-            </View>
-          </SettingsSection>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(50).duration(300)}>
-          <SettingsSection
-            title={t("units")}
-            subtitle={t("settings_units_subtitle")}
-          >
-            <View
-              style={[
-                styles.card,
-                {
-                  backgroundColor: theme.backgroundDefault,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={styles.groupedRow}>
-                <SettingsRow
-                  icon="sliders"
-                  title={t("units")}
-                  subtitle={t("units_helper_top")}
-                  value={unitsPresetLabel}
-                  isRTL={isRTL}
-                  theme={theme}
-                  onPress={() => navigation.navigate("UnitsSettings")}
-                />
-              </View>
-            </View>
-          </SettingsSection>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(75).duration(300)}>
-          <SettingsSection
-            title={t("theme")}
-            subtitle={t("settings_appearance_subtitle")}
-          >
-            <View
-              style={[
-                styles.card,
-                {
-                  backgroundColor: theme.backgroundDefault,
-                  borderColor: theme.border,
-                },
-              ]}
+            <SettingsSection
+              title={t("language")}
+              subtitle={t("settings_language_subtitle")}
             >
               <View
                 style={[
-                  styles.groupedRow,
+                  styles.card,
                   {
-                    borderBottomColor: theme.border,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    backgroundColor: theme.backgroundDefault,
+                    borderColor: theme.border,
                   },
                 ]}
               >
-                <SettingsRow
-                  icon="moon"
-                  title={t("theme")}
-                  subtitle={t("theme_helper_top")}
-                  value={currentThemeLabel}
-                  isRTL={isRTL}
-                  theme={theme}
-                  onPress={() => navigation.navigate("ThemeSettings")}
-                />
+                <View style={styles.groupedRow}>
+                  <SettingsRow
+                    icon="globe"
+                    title={t("language")}
+                    subtitle={t("select_language")}
+                    value={currentLanguageLabel}
+                    isRTL={isRTL}
+                    theme={theme}
+                    onPress={() => navigation.navigate("LanguageSettings")}
+                  />
+                </View>
               </View>
-              <View style={styles.groupedRow}>
-                <SettingsRow
-                  icon="droplet"
-                  title={t("color_theme")}
-                  subtitle={t("color_theme_helper_top")}
-                  value={currentColorThemeLabel}
-                  isRTL={isRTL}
-                  theme={theme}
-                  onPress={() => navigation.navigate("ColorThemeSettings")}
-                />
-              </View>
-            </View>
-          </SettingsSection>
-        </Animated.View>
+            </SettingsSection>
+          </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(100).duration(300)}>
-          <SettingsSection
-            title={t("scada_effects")}
-            subtitle={t("scada_effects_hint")}
+          <Animated.View
+            entering={FadeInDown.delay(50).duration(300)}
+            style={[
+              styles.sectionGridItem,
+              showWideLayout && styles.sectionGridItemWide,
+            ]}
           >
-            <View
-              style={[
-                styles.card,
-                {
-                  backgroundColor: theme.backgroundDefault,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={styles.groupedRow}>
-                <SettingsRow
-                  icon="activity"
-                  title={t("scada_effects")}
-                  subtitle={t("settings_scada_subtitle")}
-                  value={scadaEffectsEnabled ? t("enabled") : t("disabled")}
-                  isRTL={isRTL}
-                  theme={theme}
-                  trailingAccessory={
-                    <View style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}>
-                      <Switch
-                        value={scadaEffectsEnabled}
-                        onValueChange={handleToggleScadaEffects}
-                        trackColor={{
-                          false: theme.backgroundSecondary,
-                          true: theme.primary + "66",
-                        }}
-                        thumbColor={
-                          scadaEffectsEnabled
-                            ? theme.primary
-                            : theme.textSecondary
-                        }
-                      />
-                    </View>
-                  }
-                />
-              </View>
-            </View>
-          </SettingsSection>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(200).duration(300)}>
-          <SettingsSection
-            title={t("about")}
-            subtitle={t("settings_about_subtitle")}
-          >
-            <View
-              style={[
-                styles.card,
-                {
-                  backgroundColor: theme.backgroundDefault,
-                  borderColor: theme.border,
-                },
-              ]}
+            <SettingsSection
+              title={t("units")}
+              subtitle={t("settings_units_subtitle")}
             >
               <View
                 style={[
-                  styles.groupedRow,
+                  styles.card,
                   {
-                    borderBottomColor: theme.border,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    backgroundColor: theme.backgroundDefault,
+                    borderColor: theme.border,
                   },
                 ]}
               >
-                <SettingsRow
-                  icon="zap"
-                  title={t("app_name")}
-                  subtitle={t("settings_about_app_hint")}
-                  isRTL={isRTL}
-                  theme={theme}
-                />
+                <View style={styles.groupedRow}>
+                  <SettingsRow
+                    icon="sliders"
+                    title={t("units")}
+                    subtitle={t("units_helper_top")}
+                    value={unitsPresetLabel}
+                    isRTL={isRTL}
+                    theme={theme}
+                    onPress={() => navigation.navigate("UnitsSettings")}
+                  />
+                </View>
               </View>
+            </SettingsSection>
+          </Animated.View>
+
+          <Animated.View
+            entering={FadeInDown.delay(75).duration(300)}
+            style={[
+              styles.sectionGridItem,
+              showWideLayout && styles.sectionGridItemWide,
+            ]}
+          >
+            <SettingsSection
+              title={t("theme")}
+              subtitle={t("settings_appearance_subtitle")}
+            >
               <View
                 style={[
-                  styles.groupedRow,
+                  styles.card,
                   {
-                    borderBottomColor: theme.border,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    backgroundColor: theme.backgroundDefault,
+                    borderColor: theme.border,
                   },
                 ]}
               >
-                <SettingsRow
-                  icon="hash"
-                  title={t("version_label")}
-                  subtitle={t("settings_about_version_hint")}
-                  value={appVersion}
-                  valueWritingDirection="ltr"
-                  isRTL={isRTL}
-                  theme={theme}
-                />
+                <View
+                  style={[
+                    styles.groupedRow,
+                    {
+                      borderBottomColor: theme.border,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                >
+                  <SettingsRow
+                    icon="moon"
+                    title={t("theme")}
+                    subtitle={t("theme_helper_top")}
+                    value={currentThemeLabel}
+                    isRTL={isRTL}
+                    theme={theme}
+                    onPress={() => navigation.navigate("ThemeSettings")}
+                  />
+                </View>
+                <View style={styles.groupedRow}>
+                  <SettingsRow
+                    icon="droplet"
+                    title={t("color_theme")}
+                    subtitle={t("color_theme_helper_top")}
+                    value={currentColorThemeLabel}
+                    isRTL={isRTL}
+                    theme={theme}
+                    onPress={() => navigation.navigate("ColorThemeSettings")}
+                  />
+                </View>
               </View>
-              <View style={styles.groupedRow}>
-                <SettingsRow
-                  icon="user"
-                  title={t("developer")}
-                  subtitle={t("settings_about_developer_hint")}
-                  value={t("developer_name")}
-                  isRTL={isRTL}
-                  theme={theme}
-                />
+            </SettingsSection>
+          </Animated.View>
+
+          <Animated.View
+            entering={FadeInDown.delay(100).duration(300)}
+            style={[
+              styles.sectionGridItem,
+              showWideLayout && styles.sectionGridItemWide,
+            ]}
+          >
+            <SettingsSection
+              title={t("scada_effects")}
+              subtitle={t("scada_effects_hint")}
+            >
+              <View
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <View style={styles.groupedRow}>
+                  <SettingsRow
+                    icon="activity"
+                    title={t("scada_effects")}
+                    subtitle={t("settings_scada_subtitle")}
+                    value={scadaEffectsEnabled ? t("enabled") : t("disabled")}
+                    isRTL={isRTL}
+                    theme={theme}
+                    trailingAccessory={
+                      <View style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}>
+                        <Switch
+                          value={scadaEffectsEnabled}
+                          onValueChange={handleToggleScadaEffects}
+                          trackColor={{
+                            false: theme.backgroundSecondary,
+                            true: theme.primary + "66",
+                          }}
+                          thumbColor={
+                            scadaEffectsEnabled
+                              ? theme.primary
+                              : theme.textSecondary
+                          }
+                        />
+                      </View>
+                    }
+                  />
+                </View>
               </View>
-            </View>
-          </SettingsSection>
-        </Animated.View>
+            </SettingsSection>
+          </Animated.View>
+
+          <Animated.View
+            entering={FadeInDown.delay(200).duration(300)}
+            style={[
+              styles.sectionGridItem,
+              showWideLayout && styles.sectionGridItemWide,
+            ]}
+          >
+            <SettingsSection
+              title={t("about")}
+              subtitle={t("settings_about_subtitle")}
+            >
+              <View
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.groupedRow,
+                    {
+                      borderBottomColor: theme.border,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                >
+                  <SettingsRow
+                    icon="zap"
+                    title={t("app_name")}
+                    subtitle={t("settings_about_app_hint")}
+                    isRTL={isRTL}
+                    theme={theme}
+                  />
+                </View>
+                <View
+                  style={[
+                    styles.groupedRow,
+                    {
+                      borderBottomColor: theme.border,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                >
+                  <SettingsRow
+                    icon="hash"
+                    title={t("version_label")}
+                    subtitle={t("settings_about_version_hint")}
+                    value={appVersion}
+                    valueWritingDirection="ltr"
+                    isRTL={isRTL}
+                    theme={theme}
+                  />
+                </View>
+                <View style={styles.groupedRow}>
+                  <SettingsRow
+                    icon="user"
+                    title={t("developer")}
+                    subtitle={t("settings_about_developer_hint")}
+                    value={t("developer_name")}
+                    isRTL={isRTL}
+                    theme={theme}
+                  />
+                </View>
+              </View>
+            </SettingsSection>
+          </Animated.View>
+        </View>
 
         <View style={styles.footer}>
           <ThemedText
@@ -1043,7 +1092,13 @@ const styles = StyleSheet.create({
     minHeight: 70,
     paddingVertical: Spacing.sm,
   },
+  settingsRowCompact: {
+    alignItems: "flex-start",
+  },
   settingsRowStart: { alignItems: "flex-start", gap: Spacing.sm, flex: 1 },
+  settingsRowStartCompact: {
+    width: "100%",
+  },
   settingsRowIconWrap: {
     width: 38,
     height: 38,
@@ -1057,6 +1112,14 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     flexShrink: 1,
     maxWidth: "62%",
+  },
+  settingsRowEndCompact: {
+    width: "100%",
+    maxWidth: "100%",
+    justifyContent: "space-between",
+  },
+  settingsRowEndWide: {
+    maxWidth: "72%",
   },
   trailingAccessoryWrap: { alignItems: "center", justifyContent: "center" },
   chevronWrap: {
@@ -1135,6 +1198,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: Spacing.xl,
     paddingHorizontal: Spacing.md,
+  },
+  sectionsGrid: {
+    gap: Spacing.sm,
+  },
+  sectionsGridWide: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: Spacing.md,
+  },
+  sectionGridItem: {
+    width: "100%",
+  },
+  sectionGridItemWide: {
+    width: "48.5%",
   },
   formContainer: { padding: Spacing.lg },
   inputGroup: { marginBottom: Spacing.md },

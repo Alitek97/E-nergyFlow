@@ -1,5 +1,11 @@
 import React, { memo, useMemo } from "react";
-import { View, StyleSheet, ScrollView } from "react-native";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -12,9 +18,13 @@ import { NumberText } from "@/components/NumberText";
 import { OverviewStatCardContent } from "@/components/OverviewStatCardContent";
 import { ValueWithUnit } from "@/components/ValueWithUnit";
 import { useTheme } from "@/hooks/useTheme";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveScrollContentStyle,
+  getResponsiveValue,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import { useScadaEffects } from "@/hooks/useScadaEffects";
-import { Spacing, withAlpha } from "@/constants/theme";
+import { Spacing } from "@/constants/theme";
 import { useDay } from "@/contexts/DayContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
@@ -33,6 +43,7 @@ interface StatCardProps {
   accentColor: string;
   icon: string;
   fullWidth?: boolean;
+  style?: StyleProp<ViewStyle>;
 }
 
 const TURBINE_COLUMN_WIDTH = 72;
@@ -53,6 +64,7 @@ const StatCard = memo(function StatCard({
   accentColor,
   icon,
   fullWidth,
+  style,
 }: StatCardProps) {
   const { theme } = useTheme();
 
@@ -61,6 +73,7 @@ const StatCard = memo(function StatCard({
       style={[
         styles.energyCard,
         fullWidth && styles.energyCardFull,
+        style,
         {
           shadowColor: theme.primary,
           backgroundColor: theme.backgroundDefault,
@@ -149,19 +162,38 @@ export default function CalculationsScreen() {
     () => formatGas(0, unitsConfig).unitText,
     [unitsConfig],
   );
-  const isCompactPhone = layout.screenWidth <= 380;
+  const isCompactPhone = layout.isCompactPhone;
+  const showWideLayout = layout.isWideLayout;
   const sectionSpacingStyle = { marginTop: SECTION_GAP };
+  const scrollContentStyle = useMemo(
+    () =>
+      getResponsiveScrollContentStyle(layout, {
+        headerHeight,
+        tabBarHeight,
+        topSpacing: Spacing.lg,
+        bottomSpacing: Spacing.xl,
+      }),
+    [headerHeight, layout, tabBarHeight],
+  );
+  const energyCardStyle = showWideLayout ? styles.energyCardWide : undefined;
+  const turbineTableMinWidth = getResponsiveValue(layout, {
+    compactPhone: 520,
+    largePhone: 560,
+    widePhone: layout.contentWidth,
+    tablet: layout.contentWidth,
+    default: layout.contentWidth,
+  });
   const productionAccent = theme.primary;
   const flowAccent = flowStyle.color;
   const consumptionAccent = theme.warning;
   const cardBackgroundColor = theme.backgroundDefault;
   const cardBorderColor = theme.border;
   const dividerColor = theme.border;
-  const totalGasBorderColor = withAlpha(theme.warning, isDark ? 0.35 : 0.33);
-  const totalGasBackgroundColor = withAlpha(
-    theme.warning,
-    isDark ? 0.18 : 0.12,
-  );
+  const tableHeaderSurfaceColor = cardBackgroundColor;
+  const tableAlternateRowColor = theme.backgroundSecondary;
+  const totalGasAccentColor = theme.warning;
+  const totalGasBorderColor = cardBorderColor;
+  const totalGasBackgroundColor = cardBackgroundColor;
   const readyTurbines = calculations.turbineData.filter(
     (row) => !row.isStopped && !row.hasError,
   ).length;
@@ -237,14 +269,7 @@ export default function CalculationsScreen() {
         <View style={styles.contentLayer}>
           <ScrollView
             style={styles.scrollView}
-            contentContainerStyle={{
-              paddingTop: headerHeight + Spacing.lg,
-              paddingBottom: tabBarHeight + Spacing.xl,
-              paddingHorizontal: layout.horizontalPadding,
-              maxWidth: layout.isTablet ? layout.contentMaxWidth : undefined,
-              alignSelf: layout.isTablet ? "center" : undefined,
-              width: layout.isTablet ? "100%" : undefined,
-            }}
+            contentContainerStyle={scrollContentStyle}
             scrollIndicatorInsets={{ bottom: insets.bottom }}
             showsVerticalScrollIndicator={false}
           >
@@ -305,7 +330,7 @@ export default function CalculationsScreen() {
                 </View>
               </View>
 
-              <View style={styles.snapshotGrid}>
+              <View style={[styles.snapshotGrid, { gap: layout.gridGap }]}>
                 {snapshotItems.map((item) => (
                   <View
                     key={item.key}
@@ -347,6 +372,7 @@ export default function CalculationsScreen() {
               <View
                 style={[
                   styles.energyGrid,
+                  { gap: layout.gridGap },
                   isCompactPhone && styles.energyGridCompact,
                 ]}
               >
@@ -356,6 +382,7 @@ export default function CalculationsScreen() {
                   unit={productionText.unitText}
                   accentColor={productionAccent}
                   icon="zap"
+                  style={energyCardStyle}
                 />
                 <StatCard
                   title={flowStyle.text}
@@ -367,6 +394,7 @@ export default function CalculationsScreen() {
                       ? "arrow-up-right"
                       : "arrow-down-left"
                   }
+                  style={energyCardStyle}
                 />
                 <StatCard
                   title={t("consumption")}
@@ -374,7 +402,8 @@ export default function CalculationsScreen() {
                   unit={consumptionText.unitText}
                   accentColor={consumptionAccent}
                   icon="home"
-                  fullWidth
+                  fullWidth={!showWideLayout}
+                  style={energyCardStyle}
                 />
               </View>
             </Animated.View>
@@ -400,250 +429,291 @@ export default function CalculationsScreen() {
 
               <View
                 style={[
-                  styles.card,
-                  styles.systemCard,
-                  {
-                    shadowColor: theme.primary,
-                    backgroundColor: cardBackgroundColor,
-                    borderColor: cardBorderColor,
-                  },
+                  styles.gasSectionLayout,
+                  showWideLayout && styles.gasSectionLayoutWide,
                 ]}
               >
                 <View
                   style={[
-                    styles.cardHeader,
-                    rtlRow,
-                    { borderBottomColor: dividerColor, gap: Spacing.md },
+                    styles.card,
+                    styles.systemCard,
+                    styles.gasTableCard,
+                    {
+                      shadowColor: theme.cardShadow,
+                      backgroundColor: cardBackgroundColor,
+                      borderColor: cardBorderColor,
+                    },
                   ]}
                 >
                   <View
                     style={[
-                      styles.iconCircle,
-                      { backgroundColor: theme.warning + "20" },
-                    ]}
-                  >
-                    <Feather name="droplet" size={18} color={theme.warning} />
-                  </View>
-                  <View style={styles.cardHeaderText}>
-                    <ThemedText semanticVariant="labelPrimary">
-                      {t("per_turbine")}
-                    </ThemedText>
-                    <ThemedText
-                      semanticVariant="helper"
-                      style={{ color: theme.textSecondary }}
-                    >
-                      {t("calculations_table_hint")}
-                    </ThemedText>
-                  </View>
-                </View>
-
-                <View
-                  style={[
-                    styles.metricsStrip,
-                    { borderBottomColor: dividerColor },
-                  ]}
-                >
-                  {snapshotItems.map((item) => (
-                    <View key={item.key} style={styles.metricsStripItem}>
-                      <OverviewStatCardContent
-                        centered
-                        label={item.label}
-                        value={item.value}
-                        unit={"unit" in item ? item.unit : undefined}
-                        toneColor={item.tone}
-                      />
-                    </View>
-                  ))}
-                </View>
-
-                <View
-                  style={[
-                    styles.tableHeader,
-                    rtlRow,
-                    { borderBottomColor: dividerColor },
-                  ]}
-                >
-                  <View style={[styles.tableCell, styles.tableColumnTurbine]}>
-                    <ThemedText
-                      semanticVariant="tableHeader"
-                      style={[
-                        styles.tableHeaderText,
-                        styles.turbineHeaderCell,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      {t("turbine")}
-                    </ThemedText>
-                  </View>
-                  <View style={[styles.tableCell, styles.tableColumnNumeric]}>
-                    <ThemedText
-                      semanticVariant="tableHeader"
-                      style={[
-                        styles.tableHeaderText,
-                        styles.numericHeaderCell,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      {`${t("diff")} (${unitsConfig.energyUnit})`}
-                    </ThemedText>
-                  </View>
-                  <View style={[styles.tableCell, styles.tableColumnNumeric]}>
-                    <ThemedText
-                      semanticVariant="tableHeader"
-                      style={[
-                        styles.tableHeaderText,
-                        styles.numericHeaderCell,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      {`${unitsConfig.powerUnit}/h`}
-                    </ThemedText>
-                  </View>
-                  <View style={[styles.tableCell, styles.tableColumnNumeric]}>
-                    <ThemedText
-                      semanticVariant="tableHeader"
-                      style={[
-                        styles.tableHeaderText,
-                        styles.numericHeaderCell,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      {`${t("gas_consumed")} (${gasUnitText})`}
-                    </ThemedText>
-                  </View>
-                </View>
-
-                {calculations.turbineData.map((r, index) => (
-                  <View
-                    key={r.t}
-                    style={[
-                      styles.tableRow,
+                      styles.cardHeader,
                       rtlRow,
-                      {
-                        backgroundColor: r.hasError
-                          ? theme.error + "10"
-                          : r.isStopped
-                            ? theme.warning + "10"
-                            : index % 2 === 0
-                              ? theme.backgroundDefault
-                              : theme.backgroundSecondary,
-                      },
-                      index < calculations.turbineData.length - 1 && {
-                        borderBottomWidth: 1,
-                        borderBottomColor: dividerColor,
-                      },
+                      { borderBottomColor: dividerColor, gap: Spacing.md },
                     ]}
                   >
                     <View
                       style={[
-                        styles.tableCell,
-                        styles.tableColumnTurbine,
-                        styles.turbineBodyCell,
+                        styles.iconCircle,
+                        { backgroundColor: theme.warningSoft },
+                      ]}
+                    >
+                      <Feather name="droplet" size={18} color={theme.warning} />
+                    </View>
+                    <View style={styles.cardHeaderText}>
+                      <ThemedText semanticVariant="labelPrimary">
+                        {t("per_turbine")}
+                      </ThemedText>
+                      <ThemedText
+                        semanticVariant="helper"
+                        style={{ color: theme.textSecondary }}
+                      >
+                        {t("calculations_table_hint")}
+                      </ThemedText>
+                    </View>
+                  </View>
+
+                  <ScrollView
+                    horizontal={!showWideLayout}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={
+                      !showWideLayout ? styles.tableScrollContent : undefined
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.tableContent,
+                        !showWideLayout && { minWidth: turbineTableMinWidth },
                       ]}
                     >
                       <View
                         style={[
-                          styles.turbineBadgeSmall,
+                          styles.tableHeader,
+                          rtlRow,
                           {
-                            backgroundColor: r.hasError
-                              ? theme.error + "18"
-                              : r.isStopped
-                                ? theme.warning + "18"
-                                : theme.success + "20",
+                            backgroundColor: tableHeaderSurfaceColor,
+                            borderBottomColor: dividerColor,
                           },
                         ]}
                       >
-                        <FeederCode
-                          code={r.t}
+                        <View
+                          style={[styles.tableCell, styles.tableColumnTurbine]}
+                        >
+                          <ThemedText
+                            semanticVariant="tableHeader"
+                            style={[
+                              styles.tableHeaderText,
+                              styles.turbineHeaderCell,
+                              { color: theme.textSecondary },
+                            ]}
+                          >
+                            {t("turbine")}
+                          </ThemedText>
+                        </View>
+                        <View
+                          style={[styles.tableCell, styles.tableColumnNumeric]}
+                        >
+                          <ThemedText
+                            semanticVariant="tableHeader"
+                            style={[
+                              styles.tableHeaderText,
+                              styles.numericHeaderCell,
+                              { color: theme.textSecondary },
+                            ]}
+                          >
+                            {`${t("diff")} (${unitsConfig.energyUnit})`}
+                          </ThemedText>
+                        </View>
+                        <View
+                          style={[styles.tableCell, styles.tableColumnNumeric]}
+                        >
+                          <ThemedText
+                            semanticVariant="tableHeader"
+                            style={[
+                              styles.tableHeaderText,
+                              styles.numericHeaderCell,
+                              { color: theme.textSecondary },
+                            ]}
+                          >
+                            {`${unitsConfig.powerUnit}/h`}
+                          </ThemedText>
+                        </View>
+                        <View
+                          style={[styles.tableCell, styles.tableColumnNumeric]}
+                        >
+                          <ThemedText
+                            semanticVariant="tableHeader"
+                            style={[
+                              styles.tableHeaderText,
+                              styles.numericHeaderCell,
+                              { color: theme.textSecondary },
+                            ]}
+                          >
+                            {`${t("gas_consumed")} (${gasUnitText})`}
+                          </ThemedText>
+                        </View>
+                      </View>
+
+                      {calculations.turbineData.map((r, index) => (
+                        <View
+                          key={r.t}
                           style={[
-                            styles.turbineBadgeCodeSmall,
+                            styles.tableRow,
+                            rtlRow,
                             {
-                              color: r.hasError
-                                ? theme.error
+                              backgroundColor: r.hasError
+                                ? theme.error + "10"
                                 : r.isStopped
-                                  ? theme.warning
-                                  : theme.success,
+                                  ? theme.warning + "10"
+                                  : index % 2 === 0
+                                    ? "transparent"
+                                    : tableAlternateRowColor,
+                            },
+                            index < calculations.turbineData.length - 1 && {
+                              borderBottomWidth: 1,
+                              borderBottomColor: dividerColor,
                             },
                           ]}
-                        />
-                      </View>
+                        >
+                          <View
+                            style={[
+                              styles.tableCell,
+                              styles.tableColumnTurbine,
+                              styles.turbineBodyCell,
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.turbineBadgeSmall,
+                                {
+                                  backgroundColor: r.hasError
+                                    ? theme.error + "18"
+                                    : r.isStopped
+                                      ? theme.warning + "18"
+                                      : theme.success + "20",
+                                },
+                              ]}
+                            >
+                              <FeederCode
+                                code={r.t}
+                                style={[
+                                  styles.turbineBadgeCodeSmall,
+                                  {
+                                    color: r.hasError
+                                      ? theme.error
+                                      : r.isStopped
+                                        ? theme.warning
+                                        : theme.success,
+                                  },
+                                ]}
+                              />
+                            </View>
+                          </View>
+                          <View
+                            style={[
+                              styles.tableCell,
+                              styles.tableColumnNumeric,
+                            ]}
+                          >
+                            <NumberText
+                              tier="input"
+                              style={[
+                                styles.tableBodyText,
+                                styles.numericBodyCell,
+                              ]}
+                            >
+                              {r.diff === null
+                                ? "-"
+                                : formatEnergy(r.diff, unitsConfig, {
+                                    prefer: "fixed",
+                                    precision: "adaptive",
+                                  }).valueText}
+                            </NumberText>
+                          </View>
+                          <View
+                            style={[
+                              styles.tableCell,
+                              styles.tableColumnNumeric,
+                            ]}
+                          >
+                            <NumberText
+                              tier="input"
+                              style={[
+                                styles.tableBodyText,
+                                styles.numericBodyCell,
+                              ]}
+                            >
+                              {r.mwPerHr === null
+                                ? "-"
+                                : formatPower(r.mwPerHr, unitsConfig, {
+                                    display: "smart",
+                                  }).valueText}
+                            </NumberText>
+                          </View>
+                          <View
+                            style={[
+                              styles.tableCell,
+                              styles.tableColumnNumeric,
+                            ]}
+                          >
+                            <NumberText
+                              tier="input"
+                              style={[
+                                styles.tableBodyText,
+                                styles.numericBodyCell,
+                                { color: theme.warning },
+                              ]}
+                            >
+                              {r.gasM3 === null
+                                ? "-"
+                                : formatGas(r.gasM3, unitsConfig, {
+                                    display: "smart",
+                                  }).valueText}
+                            </NumberText>
+                          </View>
+                        </View>
+                      ))}
                     </View>
-                    <View style={[styles.tableCell, styles.tableColumnNumeric]}>
-                      <NumberText
-                        tier="input"
-                        style={[styles.tableBodyText, styles.numericBodyCell]}
-                      >
-                        {r.diff === null
-                          ? "-"
-                          : formatEnergy(r.diff, unitsConfig, {
-                              prefer: "fixed",
-                              precision: "adaptive",
-                            }).valueText}
-                      </NumberText>
-                    </View>
-                    <View style={[styles.tableCell, styles.tableColumnNumeric]}>
-                      <NumberText
-                        tier="input"
-                        style={[styles.tableBodyText, styles.numericBodyCell]}
-                      >
-                        {r.mwPerHr === null
-                          ? "-"
-                          : formatPower(r.mwPerHr, unitsConfig, {
-                              display: "smart",
-                            }).valueText}
-                      </NumberText>
-                    </View>
-                    <View style={[styles.tableCell, styles.tableColumnNumeric]}>
-                      <NumberText
-                        tier="input"
-                        style={[
-                          styles.tableBodyText,
-                          styles.numericBodyCell,
-                          { color: theme.warning },
-                        ]}
-                      >
-                        {r.gasM3 === null
-                          ? "-"
-                          : formatGas(r.gasM3, unitsConfig, {
-                              display: "smart",
-                            }).valueText}
-                      </NumberText>
-                    </View>
-                  </View>
-                ))}
-              </View>
+                  </ScrollView>
+                </View>
 
-              <View
-                style={[
-                  styles.totalGasCard,
-                  {
-                    shadowColor: theme.warning,
-                    borderColor: totalGasBorderColor,
-                    backgroundColor: totalGasBackgroundColor,
-                  },
-                ]}
-              >
                 <View
                   style={[
-                    styles.totalGasIconCircle,
-                    { backgroundColor: theme.warning + "24" },
+                    styles.totalGasCard,
+                    showWideLayout && styles.totalGasCardWide,
+                    {
+                      shadowColor: theme.cardShadow,
+                      borderColor: totalGasBorderColor,
+                      backgroundColor: totalGasBackgroundColor,
+                    },
                   ]}
                 >
-                  <Feather name="droplet" size={22} color={theme.warning} />
+                  <View
+                    style={[
+                      styles.totalGasIconCircle,
+                      { backgroundColor: theme.warningSoft },
+                    ]}
+                  >
+                    <Feather
+                      name="droplet"
+                      size={22}
+                      color={totalGasAccentColor}
+                    />
+                  </View>
+                  <ThemedText
+                    semanticVariant="labelPrimary"
+                    style={{ color: theme.text, marginTop: Spacing.sm }}
+                  >
+                    {t("total_gas")}
+                  </ThemedText>
+                  <ValueWithUnit
+                    value={totalGasText.valueText}
+                    unit={totalGasText.unitText}
+                    type="h2"
+                    valueStyle={{ color: totalGasAccentColor }}
+                    unitStyle={{ color: theme.textSecondary }}
+                  />
                 </View>
-                <ThemedText
-                  semanticVariant="labelPrimary"
-                  style={{ color: theme.warning, marginTop: Spacing.sm }}
-                >
-                  {t("total_gas")}
-                </ThemedText>
-                <ValueWithUnit
-                  value={totalGasText.valueText}
-                  unit={totalGasText.unitText}
-                  type="h2"
-                  valueStyle={{ color: theme.warning }}
-                  unitStyle={{ color: theme.textSecondary }}
-                />
               </View>
             </Animated.View>
 
@@ -694,6 +764,7 @@ export default function CalculationsScreen() {
                   <View
                     style={[
                       styles.formulaTableRow,
+                      isCompactPhone && styles.formulaTableRowCompact,
                       {
                         flexDirection: isRTL ? "row-reverse" : "row",
                         borderBottomColor: dividerColor,
@@ -729,6 +800,7 @@ export default function CalculationsScreen() {
                   <View
                     style={[
                       styles.formulaTableRow,
+                      isCompactPhone && styles.formulaTableRowCompact,
                       {
                         flexDirection: isRTL ? "row-reverse" : "row",
                         borderBottomColor: dividerColor,
@@ -765,6 +837,7 @@ export default function CalculationsScreen() {
                     style={[
                       styles.formulaTableRow,
                       styles.formulaTableRowLast,
+                      isCompactPhone && styles.formulaTableRowCompact,
                       { flexDirection: isRTL ? "row-reverse" : "row" },
                     ]}
                   >
@@ -834,7 +907,12 @@ export default function CalculationsScreen() {
                   </View>
 
                   <View style={styles.gasEquationBlock}>
-                    <View style={styles.gasEquationRow}>
+                    <View
+                      style={[
+                        styles.gasEquationRow,
+                        isCompactPhone && styles.gasEquationRowCompact,
+                      ]}
+                    >
                       <ThemedText
                         semanticVariant="tableHeader"
                         style={[
@@ -858,7 +936,12 @@ export default function CalculationsScreen() {
                       </ThemedText>
                     </View>
 
-                    <View style={styles.gasEquationRow}>
+                    <View
+                      style={[
+                        styles.gasEquationRow,
+                        isCompactPhone && styles.gasEquationRowCompact,
+                      ]}
+                    >
                       <ThemedText
                         semanticVariant="tableHeader"
                         style={[
@@ -882,7 +965,12 @@ export default function CalculationsScreen() {
                       </ThemedText>
                     </View>
 
-                    <View style={styles.gasEquationRow}>
+                    <View
+                      style={[
+                        styles.gasEquationRow,
+                        isCompactPhone && styles.gasEquationRowCompact,
+                      ]}
+                    >
                       <ThemedText
                         semanticVariant="tableHeader"
                         style={[
@@ -907,7 +995,11 @@ export default function CalculationsScreen() {
                     </View>
 
                     <View
-                      style={[styles.gasEquationRow, styles.gasEquationRowLast]}
+                      style={[
+                        styles.gasEquationRow,
+                        styles.gasEquationRowLast,
+                        isCompactPhone && styles.gasEquationRowCompact,
+                      ]}
                     >
                       <ThemedText
                         semanticVariant="tableHeader"
@@ -1065,6 +1157,10 @@ const styles = StyleSheet.create({
     flexBasis: "100%",
     width: "100%",
   },
+  energyCardWide: {
+    flexBasis: "31.5%",
+    minWidth: 0,
+  },
   energyIconCircle: {
     width: 40,
     height: 40,
@@ -1083,6 +1179,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 20,
     elevation: 9,
+  },
+  gasSectionLayout: {
+    gap: Spacing.lg,
+  },
+  gasSectionLayoutWide: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  gasTableCard: {
+    flex: 1,
+    marginBottom: 0,
   },
   cardHeader: {
     flexDirection: "row",
@@ -1172,21 +1279,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
   },
-  metricsStrip: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: CARD_PADDING,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    gap: Spacing.md,
+  tableScrollContent: {
+    minWidth: "100%",
   },
-  metricsStripItem: {
-    flexGrow: 1,
-    flexBasis: 120,
-    minWidth: 0,
-    minHeight: 78,
-    alignItems: "center",
-    justifyContent: "center",
+  tableContent: {
+    width: "100%",
   },
   totalGasCard: {
     marginTop: SECTION_GAP,
@@ -1201,6 +1298,11 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 9,
     minHeight: 148,
+  },
+  totalGasCardWide: {
+    flex: 0.34,
+    marginTop: 0,
+    marginBottom: 0,
   },
   totalGasIconCircle: {
     width: 44,
@@ -1228,6 +1330,11 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderBottomWidth: 1,
     gap: Spacing.md,
+  },
+  formulaTableRowCompact: {
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    paddingVertical: Spacing.xs,
   },
   formulaTableRowLast: {
     borderBottomWidth: 0,
@@ -1259,6 +1366,10 @@ const styles = StyleSheet.create({
     minHeight: 42,
     paddingHorizontal: Spacing.xs,
     gap: Spacing.md,
+  },
+  gasEquationRowCompact: {
+    alignItems: "flex-start",
+    flexWrap: "wrap",
   },
   gasEquationRowLast: {
     marginBottom: 0,

@@ -13,7 +13,10 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useHeaderHeight } from "@react-navigation/elements";
 
 import { useTheme } from "@/hooks/useTheme";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveScrollContentStyle,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import { SETTINGS_SUBPAGE_SIZES } from "@/components/settings/settingsSubpageStyles";
 import { DashboardBackdrop } from "@/components/visual/DashboardBackdrop";
 
@@ -50,15 +53,17 @@ export default function SettingsSubpageLayout({
       <DashboardBackdrop intensity="subtle" />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{
-          paddingTop: headerHeight + SETTINGS_SUBPAGE_SIZES.topSpacing,
-          paddingBottom: tabBarHeight + SETTINGS_SUBPAGE_SIZES.bottomSpacing,
-          paddingHorizontal: horizontalPadding,
-          maxWidth: contentMaxWidth,
-          alignSelf: layout.isTablet ? "center" : undefined,
-          width: layout.isTablet ? "100%" : undefined,
-          gap: SETTINGS_SUBPAGE_SIZES.sectionGap,
-        }}
+        contentContainerStyle={[
+          getResponsiveScrollContentStyle(layout, {
+            headerHeight,
+            tabBarHeight,
+            topSpacing: SETTINGS_SUBPAGE_SIZES.topSpacing,
+            bottomSpacing: SETTINGS_SUBPAGE_SIZES.bottomSpacing,
+            horizontalPadding,
+            maxWidth: contentMaxWidth,
+          }),
+          { gap: SETTINGS_SUBPAGE_SIZES.sectionGap },
+        ]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}

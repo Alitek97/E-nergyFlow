@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from "react";
-import { StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 import { NumberText } from "@/components/NumberText";
 import { ThemedText } from "@/components/ThemedText";
@@ -25,6 +25,7 @@ interface ReportTableProps<RowType extends object> {
   headerTextColor: string;
   rowKey: (row: RowType, index: number) => string;
   numericFontSize?: number;
+  minWidth?: number;
 }
 
 interface ReportTableRowProps<RowType extends object> {
@@ -163,6 +164,7 @@ export function ReportTable<RowType extends object>({
   headerTextColor,
   rowKey,
   numericFontSize = 12,
+  minWidth,
 }: ReportTableProps<RowType>) {
   const displayColumns = useMemo(
     () => (isRTL ? [...columns].reverse() : columns),
@@ -170,47 +172,53 @@ export function ReportTable<RowType extends object>({
   );
 
   return (
-    <View>
-      <View
-        style={[
-          styles.rowBase,
-          styles.headerRow,
-          { borderBottomColor: borderColor },
-        ]}
-      >
-        {displayColumns.map((col) => (
-          <TableCell key={col.key} flex={col.flex}>
-            <ThemedText
-              semanticVariant="tableHeader"
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={[
-                styles.cellTextBase,
-                {
-                  textAlign: resolveTextAlign(col.align, isRTL),
-                  color: headerTextColor,
-                },
-              ]}
-            >
-              {col.title}
-            </ThemedText>
-          </TableCell>
+    <ScrollView
+      horizontal={Boolean(minWidth)}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={minWidth ? { minWidth } : undefined}
+    >
+      <View>
+        <View
+          style={[
+            styles.rowBase,
+            styles.headerRow,
+            { borderBottomColor: borderColor },
+          ]}
+        >
+          {displayColumns.map((col) => (
+            <TableCell key={col.key} flex={col.flex}>
+              <ThemedText
+                semanticVariant="tableHeader"
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[
+                  styles.cellTextBase,
+                  {
+                    textAlign: resolveTextAlign(col.align, isRTL),
+                    color: headerTextColor,
+                  },
+                ]}
+              >
+                {col.title}
+              </ThemedText>
+            </TableCell>
+          ))}
+        </View>
+
+        {rows.map((row, rowIndex) => (
+          <ReportTableRow
+            key={rowKey(row, rowIndex)}
+            row={row}
+            rowIndex={rowIndex}
+            rowCount={rows.length}
+            displayColumns={displayColumns}
+            isRTL={isRTL}
+            borderColor={borderColor}
+            numericFontSize={numericFontSize}
+          />
         ))}
       </View>
-
-      {rows.map((row, rowIndex) => (
-        <ReportTableRow
-          key={rowKey(row, rowIndex)}
-          row={row}
-          rowIndex={rowIndex}
-          rowCount={rows.length}
-          displayColumns={displayColumns}
-          isRTL={isRTL}
-          borderColor={borderColor}
-          numericFontSize={numericFontSize}
-        />
-      ))}
-    </View>
+    </ScrollView>
   );
 }
 

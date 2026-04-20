@@ -21,7 +21,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveScrollContentStyle,
+  getResponsiveValue,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import { useTheme } from "@/hooks/useTheme";
 import type { ReportsStackParamList } from "@/navigation/ReportsStackNavigator";
 import { fetchDayFromSupabase } from "@/lib/supabaseSync";
@@ -72,6 +76,7 @@ export default function DayDetailsScreen() {
   const { unitsConfig } = useUnits();
   const { rtlRow } = useRTL();
   const layout = useResponsiveLayout();
+  const showWideLayout = layout.isWideLayout;
   const { user } = useAuth();
   const isFocused = useIsFocused();
 
@@ -98,22 +103,29 @@ export default function DayDetailsScreen() {
   }, [load]);
 
   const contentStyle = useMemo(
-    () => ({
-      paddingTop: headerHeight + Spacing.lg,
-      paddingBottom: tabBarHeight + Spacing.xl,
-      paddingHorizontal: layout.horizontalPadding,
-      maxWidth: layout.isTablet ? layout.contentMaxWidth : undefined,
-      alignSelf: layout.isTablet ? ("center" as const) : undefined,
-      width: layout.isTablet ? ("100%" as const) : undefined,
-    }),
-    [
-      headerHeight,
-      tabBarHeight,
-      layout.horizontalPadding,
-      layout.isTablet,
-      layout.contentMaxWidth,
-    ],
+    () =>
+      getResponsiveScrollContentStyle(layout, {
+        headerHeight,
+        tabBarHeight,
+        topSpacing: Spacing.lg,
+        bottomSpacing: Spacing.xl,
+      }),
+    [headerHeight, layout, tabBarHeight],
   );
+  const feederTableMinWidth = getResponsiveValue(layout, {
+    compactPhone: 420,
+    largePhone: 460,
+    widePhone: layout.contentWidth,
+    tablet: layout.contentWidth,
+    default: layout.contentWidth,
+  });
+  const turbineTableMinWidth = getResponsiveValue(layout, {
+    compactPhone: 560,
+    largePhone: 620,
+    widePhone: layout.contentWidth,
+    tablet: layout.contentWidth,
+    default: layout.contentWidth,
+  });
 
   const shiftLabel = useMemo(() => getShiftForDate(dateKey), [dateKey]);
 
@@ -438,6 +450,7 @@ export default function DayDetailsScreen() {
                   borderColor={theme.border}
                   headerTextColor={theme.textSecondary}
                   rowKey={(row) => row.name}
+                  minWidth={!showWideLayout ? feederTableMinWidth : undefined}
                 />
               </View>
             ) : null}
@@ -466,6 +479,7 @@ export default function DayDetailsScreen() {
                   headerTextColor={theme.textSecondary}
                   rowKey={(row) => row.name}
                   numericFontSize={12}
+                  minWidth={!showWideLayout ? turbineTableMinWidth : undefined}
                 />
               </View>
             ) : null}
@@ -483,7 +497,13 @@ export default function DayDetailsScreen() {
                 <ThemedText semanticVariant="labelPrimary">
                   {t("daily_summary")}
                 </ThemedText>
-                <View style={styles.energyStatsRow}>
+                <View
+                  style={[
+                    styles.energyStatsRow,
+                    (layout.isCompactPhone || showWideLayout) &&
+                      styles.energyStatsRowResponsive,
+                  ]}
+                >
                   {(() => {
                     const productionText = formatEnergy(
                       totals.production,
@@ -687,8 +707,12 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     gap: Spacing.md,
   },
+  energyStatsRowResponsive: {
+    flexWrap: "wrap",
+  },
   energyStatItem: {
     flex: 1,
+    minWidth: 140,
     alignItems: "center",
     gap: Spacing.xs,
   },

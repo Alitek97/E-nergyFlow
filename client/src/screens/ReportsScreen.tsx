@@ -30,7 +30,10 @@ import { ScreenBackground } from "@/components/visual/ScreenBackground";
 import { EnergyFlowOverlay } from "@/components/visual/EnergyFlowOverlay";
 import { ScadaGridOverlay } from "@/components/visual/ScadaGridOverlay";
 import { useTheme } from "@/hooks/useTheme";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import {
+  getResponsiveScrollContentStyle,
+  useResponsiveLayout,
+} from "@/hooks/useResponsiveLayout";
 import { useScadaEffects } from "@/hooks/useScadaEffects";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { useDay } from "@/contexts/DayContext";
@@ -65,7 +68,10 @@ type ReportsScreenCache = {
 
 let reportsScreenCache: ReportsScreenCache | null = null;
 
-function getCachedReportsScreenData(userId: string | null, currentMonth: string) {
+function getCachedReportsScreenData(
+  userId: string | null,
+  currentMonth: string,
+) {
   if (
     !reportsScreenCache ||
     reportsScreenCache.userId !== userId ||
@@ -88,6 +94,8 @@ export default function ReportsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { theme, isDark } = useTheme();
   const layout = useResponsiveLayout();
+  const showWideLayout = layout.isWideLayout;
+  const isCompactPhone = layout.isCompactPhone;
   const { dateKey, day } = useDay();
   const { language, t, isRTL } = useLanguage();
   const { unitsConfig } = useUnits();
@@ -113,7 +121,9 @@ export default function ReportsScreen() {
     () => cachedReportsData?.allDays ?? [],
   );
   const [currentMonthStats, setCurrentMonthStats] =
-    useState<MonthSummary | null>(() => cachedReportsData?.currentMonthStats ?? null);
+    useState<MonthSummary | null>(
+      () => cachedReportsData?.currentMonthStats ?? null,
+    );
   const [previousMonthsList, setPreviousMonthsList] = useState<MonthListItem[]>(
     () => cachedReportsData?.previousMonthsList ?? [],
   );
@@ -123,21 +133,14 @@ export default function ReportsScreen() {
   const [monthModalVisible, setMonthModalVisible] = useState(false);
 
   const scrollContentContainerStyle = useMemo<ViewStyle>(
-    () => ({
-      paddingTop: headerHeight + Spacing.lg,
-      paddingBottom: tabBarHeight + Spacing.xl,
-      paddingHorizontal: layout.horizontalPadding,
-      maxWidth: layout.isTablet ? layout.contentMaxWidth : undefined,
-      alignSelf: layout.isTablet ? "center" : undefined,
-      width: layout.isTablet ? "100%" : undefined,
-    }),
-    [
-      headerHeight,
-      tabBarHeight,
-      layout.horizontalPadding,
-      layout.isTablet,
-      layout.contentMaxWidth,
-    ],
+    () =>
+      getResponsiveScrollContentStyle(layout, {
+        headerHeight,
+        tabBarHeight,
+        topSpacing: Spacing.lg,
+        bottomSpacing: Spacing.xl,
+      }),
+    [headerHeight, layout, tabBarHeight],
   );
 
   const loadAllData = useCallback(
@@ -369,11 +372,19 @@ export default function ReportsScreen() {
         <View
           style={[
             styles.monthHeader,
+            isCompactPhone && styles.monthHeaderCompact,
             rtlRow,
             { borderBottomColor: theme.border },
           ]}
         >
-          <View style={[styles.monthTitleRow, rtlRow, { gap: Spacing.sm }]}>
+          <View
+            style={[
+              styles.monthTitleRow,
+              isCompactPhone && styles.monthTitleRowCompact,
+              rtlRow,
+              { gap: Spacing.sm },
+            ]}
+          >
             <View
               style={[
                 styles.monthBadge,
@@ -421,7 +432,12 @@ export default function ReportsScreen() {
           </View>
         </View>
 
-        <View style={styles.monthStats}>
+        <View
+          style={[
+            styles.monthStats,
+            (isCompactPhone || showWideLayout) && styles.monthStatsResponsive,
+          ]}
+        >
           <View style={styles.monthStatItem}>
             <View
               style={[styles.monthStatDot, { backgroundColor: theme.success }]}
@@ -571,7 +587,8 @@ export default function ReportsScreen() {
                 <View
                   style={[
                     styles.statsGrid,
-                    layout.isTablet && styles.tabletStatsGrid,
+                    showWideLayout && styles.tabletStatsGrid,
+                    isCompactPhone && styles.statsGridCompact,
                   ]}
                 >
                   <View
@@ -1113,6 +1130,9 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     gap: Spacing.md,
   },
+  statsGridCompact: {
+    flexWrap: "wrap",
+  },
   tabletStatsGrid: {
     flexWrap: "wrap",
   },
@@ -1139,9 +1159,18 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderBottomWidth: 1,
   },
+  monthHeaderCompact: {
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+  },
   monthTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  monthTitleRowCompact: {
+    flex: 1,
+    flexWrap: "wrap",
   },
   monthBadge: {
     width: 28,
@@ -1165,9 +1194,15 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     justifyContent: "space-around",
   },
+  monthStatsResponsive: {
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+    gap: Spacing.md,
+  },
   monthStatItem: {
     alignItems: "center",
     flex: 1,
+    minWidth: 128,
     gap: Spacing.xs,
     minHeight: 92,
   },

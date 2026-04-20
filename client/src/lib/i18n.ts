@@ -179,7 +179,7 @@ export const translations = {
     error: "Error",
     failed_export: "Failed to export data",
     failed_copy: "Failed to copy data",
-    version: "E-nergy Flow v2.8.5",
+    version: "E-nergy Flow v2.8.8",
 
     // Feedback messages
     msg_saved_success: "Saved successfully",
@@ -531,7 +531,7 @@ export const translations = {
     error: "خطأ",
     failed_export: "فشل تصدير البيانات",
     failed_copy: "فشل نسخ البيانات",
-    version: "E-nergy Flow 2.8.5",
+    version: "E-nergy Flow 2.8.8",
 
     // Feedback messages
     msg_saved_success: "تم الحفظ بنجاح",

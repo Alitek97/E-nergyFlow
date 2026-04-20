@@ -15,6 +15,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import { useTheme } from "@/hooks/useTheme";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { BorderRadius, Spacing } from "@/constants/theme";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { DayData, feederRowComputed, turbineRowComputed } from "@/lib/storage";
 import { useSecondaryGroupSwipeControl } from "@/navigation/SecondaryGroupSwipe";
 
@@ -39,6 +40,7 @@ const LOGICAL_PAGE_KEYS: ChartPageId[] = ["overview", "feeders", "turbines"];
 export function ReportsChartsCarousel({ days }: ReportsChartsCarouselProps) {
   const { theme } = useTheme();
   const { t, isRTL } = useLanguage();
+  const layout = useResponsiveLayout();
   const { setSwipeBlocked } = useSecondaryGroupSwipeControl();
   const flatListRef = useRef<FlatList<ChartPage>>(null);
   const ignoreNextMomentumRef = useRef(false);
@@ -222,6 +224,7 @@ export function ReportsChartsCarousel({ days }: ReportsChartsCarouselProps) {
       <View
         style={[
           styles.selectorBar,
+          layout.isCompactPhone && styles.selectorBarCompact,
           {
             backgroundColor: theme.surfaceMuted,
             borderColor: theme.borderStrong,
@@ -236,6 +239,8 @@ export function ReportsChartsCarousel({ days }: ReportsChartsCarouselProps) {
               <PressableScale
                 style={[
                   styles.segmentButton,
+                  layout.isCompactPhone && styles.segmentButtonCompact,
+                  layout.isWideLayout && styles.segmentButtonWide,
                   active
                     ? {
                         backgroundColor: theme.accentSoft,
@@ -253,6 +258,7 @@ export function ReportsChartsCarousel({ days }: ReportsChartsCarouselProps) {
                   style={{
                     color: active ? theme.primary : theme.textSecondary,
                     textAlign: "center",
+                    fontSize: layout.isCompactPhone ? 12 : undefined,
                   }}
                 >
                   {tab.label}
@@ -427,6 +433,9 @@ const styles = StyleSheet.create({
     padding: 5,
     alignSelf: "stretch",
   },
+  selectorBarCompact: {
+    padding: 4,
+  },
   segmentButton: {
     minHeight: 42,
     borderRadius: 999,
@@ -439,6 +448,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 1,
+  },
+  segmentButtonCompact: {
+    minHeight: 40,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: Spacing.xs,
+  },
+  segmentButtonWide: {
+    minHeight: 44,
   },
   segmentSlot: {
     flex: 1,
