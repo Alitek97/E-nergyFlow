@@ -117,16 +117,18 @@ export default function MainTabNavigator() {
       : 8;
   const tabBarHeight =
     collapsedDockHeight + segmentedRowHeight + 18 + tabBarBottomPadding;
+  const phoneTabBarMaxWidth = getResponsiveValue(layout, {
+    compactPhone: 344,
+    largePhone: 392,
+    widePhone: 468,
+    tablet: layout.isLandscape ? 520 : 468,
+    largeTablet: layout.isLandscape ? 620 : 520,
+    default: 392,
+  });
+  const tabletTabBarMaxWidth = layout.isLandscape ? 640 : 560;
   const maxContentWidth = Math.min(
     layout.contentWidth,
-    getResponsiveValue(layout, {
-      compactPhone: 344,
-      largePhone: 392,
-      widePhone: 468,
-      tablet: layout.isLandscape ? 520 : 468,
-      largeTablet: layout.isLandscape ? 620 : 520,
-      default: 392,
-    }),
+    layout.isWide ? tabletTabBarMaxWidth : phoneTabBarMaxWidth,
   );
 
   return (

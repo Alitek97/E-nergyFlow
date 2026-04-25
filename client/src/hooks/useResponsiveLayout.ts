@@ -14,13 +14,17 @@ export interface ResponsiveLayout {
   isLargePhone: boolean;
   isLandscape: boolean;
   isWideLayout: boolean;
+  isWide: boolean;
   shouldCenterContent: boolean;
   isIOS: boolean;
   isAndroid: boolean;
+  width: number;
+  height: number;
   screenWidth: number;
   screenHeight: number;
   shortestSide: number;
   longestSide: number;
+  columnCount: number;
   columns: number;
   formColumns: number;
   statsColumns: number;
@@ -52,6 +56,8 @@ type ResponsiveScrollContentStyleOptions = {
   maxWidth?: number;
 };
 
+export const TABLET_MIN_WIDTH = 768;
+export const TABLET_CONTENT_MAX_WIDTH = 900;
 export const TABLET_MIN_SHORTEST_SIDE = 600;
 export const LARGE_TABLET_MIN_SHORTEST_SIDE = 820;
 export const COMPACT_PHONE_MAX_SHORTEST_SIDE = 389;
@@ -73,6 +79,8 @@ function getResponsiveLayout(width: number, height: number): ResponsiveLayout {
   const isCompactPhone =
     !isTablet && shortestSide <= COMPACT_PHONE_MAX_SHORTEST_SIDE;
   const isLargePhone = !isTablet && !isCompactPhone;
+  // Width-based tablet breakpoint for tablet-only layout adaptations.
+  const isWide = screenWidth >= TABLET_MIN_WIDTH;
   const deviceCategory: DeviceCategory = isTablet
     ? "tablet"
     : isCompactPhone
@@ -117,12 +125,16 @@ function getResponsiveLayout(width: number, height: number): ResponsiveLayout {
       : isWideLayout
         ? 860
         : availableContentWidth;
+  const cappedContentMaxWidth = isWide
+    ? Math.min(targetContentMaxWidth, TABLET_CONTENT_MAX_WIDTH)
+    : targetContentMaxWidth;
   const contentMaxWidth = shouldCenterContent
-    ? Math.min(availableContentWidth, targetContentMaxWidth)
+    ? Math.min(availableContentWidth, cappedContentMaxWidth)
     : availableContentWidth;
   const contentWidth = shouldCenterContent
     ? contentMaxWidth
     : availableContentWidth;
+  const columnCount = isWide ? 2 : 1;
   const columns = isTablet ? (isLandscape ? 3 : 2) : isWideLayout ? 2 : 1;
   const formColumns = isWideLayout ? 2 : 1;
   const statsColumns = isTablet
@@ -152,13 +164,17 @@ function getResponsiveLayout(width: number, height: number): ResponsiveLayout {
     isLargePhone,
     isLandscape,
     isWideLayout,
+    isWide,
     shouldCenterContent,
     isIOS,
     isAndroid,
+    width: screenWidth,
+    height: screenHeight,
     screenWidth,
     screenHeight,
     shortestSide,
     longestSide,
+    columnCount,
     columns,
     formColumns,
     statsColumns,

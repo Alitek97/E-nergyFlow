@@ -10,6 +10,7 @@ import { ThemedText } from "./ThemedText";
 import { NumberText } from "./NumberText";
 import { NumericKeypad } from "./NumericKeypad";
 import { useTheme } from "@/hooks/useTheme";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { BorderRadius, Spacing, withAlpha } from "@/constants/theme";
 import { formatWithCommas, stripCommas } from "@/lib/storage";
 
@@ -32,10 +33,19 @@ export const NumericInputField = memo(function NumericInputField({
   textStyle,
   labelStyle,
 }: NumericInputFieldProps) {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
+  const layout = useResponsiveLayout();
   const [showKeypad, setShowKeypad] = useState(false);
   const invalidBorderColor = theme.warning;
   const invalidBackgroundColor = withAlpha(theme.warning, 0.12);
+  const tabletShadowStyle = layout.isWide
+    ? ({
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: isDark ? 0.04 : 0.02,
+        shadowRadius: isDark ? 6 : 4,
+        elevation: isDark ? 1 : 0,
+      } as const)
+    : undefined;
 
   const displayValue = useMemo(
     () => formatWithCommas(stripCommas(value)),
@@ -70,6 +80,7 @@ export const NumericInputField = memo(function NumericInputField({
             borderWidth: isInvalid ? 1.5 : 1,
             shadowColor: theme.cardShadow,
           },
+          tabletShadowStyle,
         ]}
         onPress={openKeypad}
         testID={testID}

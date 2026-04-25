@@ -57,7 +57,7 @@ export default function FeedersScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const layout = useResponsiveLayout();
   const { dateKey, setDateKey, day, setDay, saveDay, resetDay, loading } =
     useDay();
@@ -71,16 +71,105 @@ export default function FeedersScreen() {
   );
   const { rtlRow } = useRTL();
   const showWideGrid = layout.isWideLayout;
-  const scrollContentStyle = useMemo(
-    () =>
-      getResponsiveScrollContentStyle(layout, {
-        headerHeight,
-        tabBarHeight,
-        topSpacing: Spacing.lg,
-        bottomSpacing: Spacing.xl,
-      }),
-    [headerHeight, layout, tabBarHeight],
+  const showTabletLayout = layout.isWide;
+  const availableTabletWidth = Math.max(
+    layout.screenWidth - layout.horizontalPadding * 2,
+    0,
   );
+  const operationGridGap = showTabletLayout
+    ? getResponsiveValue(layout, {
+        tablet: 20,
+        tabletLandscape: 24,
+        largeTablet: 24,
+        largeTabletLandscape: 28,
+        default: layout.gridGap,
+      })
+    : 0;
+  const operationGridMaxWidth = showTabletLayout
+    ? Math.min(
+        availableTabletWidth,
+        getResponsiveValue(layout, {
+          tablet: 960,
+          tabletLandscape: 1040,
+          largeTablet: 1000,
+          largeTabletLandscape: 1100,
+          default: 960,
+        }),
+      )
+    : undefined;
+  const operationSectionMaxWidth =
+    showTabletLayout && operationGridMaxWidth !== undefined
+      ? Math.min(availableTabletWidth, operationGridMaxWidth + Spacing.lg * 2)
+      : undefined;
+  const operationGridTabletStyle =
+    showTabletLayout && operationGridMaxWidth !== undefined
+      ? ({
+          alignSelf: "center",
+          width: "100%",
+          maxWidth: operationGridMaxWidth,
+        } as const)
+      : undefined;
+  const operationGridItemTabletStyle = showTabletLayout
+    ? ({
+        marginBottom: operationGridGap,
+      } as const)
+    : undefined;
+  const operationSectionTabletStyle =
+    showTabletLayout && operationSectionMaxWidth !== undefined
+      ? ({
+          alignSelf: "center",
+          width: "100%",
+          maxWidth: operationSectionMaxWidth,
+          borderColor: withAlpha(theme.border, isDark ? 0.9 : 0.56),
+          shadowColor: theme.cardShadow,
+          shadowOffset: { width: 0, height: isDark ? 4 : 0 },
+          shadowOpacity: isDark ? 0.05 : 0,
+          shadowRadius: isDark ? 8 : 0,
+          elevation: isDark ? 1 : 0,
+        } as const)
+      : undefined;
+  const operationCardTabletStyle = showTabletLayout
+    ? ({
+        alignSelf: "stretch",
+        margin: 0,
+        padding: Spacing.lg,
+        width: "100%",
+        maxWidth: "100%",
+        shadowColor: theme.cardShadow,
+        shadowOffset: { width: 0, height: isDark ? 6 : 1 },
+        shadowOpacity: isDark ? 0.05 : 0.018,
+        shadowRadius: isDark ? 10 : 5,
+        elevation: isDark ? 2 : 0,
+      } as const)
+    : undefined;
+  const tabletLargeSurfaceShadowStyle = showTabletLayout
+    ? ({
+        borderColor: withAlpha(theme.border, isDark ? 0.72 : 0.54),
+        shadowColor: theme.cardShadow,
+        shadowOffset: { width: 0, height: isDark ? 4 : 0 },
+        shadowOpacity: isDark ? 0.05 : 0,
+        shadowRadius: isDark ? 8 : 0,
+        elevation: isDark ? 1 : 0,
+      } as const)
+    : undefined;
+  const scrollContentStyle = useMemo(() => {
+    const baseStyle = getResponsiveScrollContentStyle(layout, {
+      headerHeight,
+      tabBarHeight,
+      topSpacing: Spacing.lg,
+      bottomSpacing: Spacing.xl,
+    });
+
+    return showTabletLayout && operationSectionMaxWidth !== undefined
+      ? { ...baseStyle, maxWidth: operationSectionMaxWidth }
+      : baseStyle;
+  }, [
+    headerHeight,
+    layout,
+    operationSectionMaxWidth,
+    showTabletLayout,
+    tabBarHeight,
+  ]);
   const datePickerModalWidth = Math.min(
     layout.contentWidth,
     getResponsiveValue(layout, {
@@ -109,6 +198,17 @@ export default function FeedersScreen() {
 
   const total = rows.reduce((a, r) => a + (r.diff ?? 0), 0);
   const isExport = total >= 0;
+  const summaryToneColor = isExport ? theme.success : theme.error;
+  const tabletSummaryCardShadowStyle = showTabletLayout
+    ? ({
+        borderColor: withAlpha(summaryToneColor, isDark ? 0.5 : 0.28),
+        shadowColor: summaryToneColor,
+        shadowOffset: { width: 0, height: isDark ? 4 : 1 },
+        shadowOpacity: isDark ? 0.05 : 0.015,
+        shadowRadius: isDark ? 8 : 5,
+        elevation: isDark ? 1 : 0,
+      } as const)
+    : undefined;
   const completedCount = rows.filter((r) => !r.isStopped).length;
   const feedersSnapshot = useMemo(
     () =>
@@ -309,6 +409,7 @@ export default function FeedersScreen() {
                 backgroundColor: theme.backgroundDefault,
                 borderColor: theme.border,
               },
+              tabletLargeSurfaceShadowStyle,
             ]}
           >
             <View style={[styles.dateNavigationRow, rtlRow]}>
@@ -518,6 +619,7 @@ export default function FeedersScreen() {
               backgroundColor: theme.backgroundDefault,
               borderColor: theme.border,
             },
+            tabletLargeSurfaceShadowStyle,
           ]}
         >
           <View style={[styles.overviewHeader, rtlRow]}>
@@ -550,6 +652,7 @@ export default function FeedersScreen() {
                 key={item.key}
                 style={[
                   styles.overviewItem,
+                  showTabletLayout && styles.overviewItemTablet,
                   { backgroundColor: item.tone + "10" },
                 ]}
               >
@@ -604,6 +707,7 @@ export default function FeedersScreen() {
               backgroundColor: theme.backgroundDefault,
               borderColor: theme.border,
             },
+            operationSectionTabletStyle,
           ]}
         >
           <View
@@ -626,186 +730,208 @@ export default function FeedersScreen() {
             </ThemedText>
           </View>
 
-          <View style={showWideGrid ? styles.tabletGrid : undefined}>
+          <View
+            style={
+              showTabletLayout
+                ? [styles.tabletGrid, operationGridTabletStyle]
+                : undefined
+            }
+          >
             {FEEDERS.map((f, index) => {
               const row = rows[index];
               return (
-                <Animated.View
+                <View
                   key={f}
-                  entering={FadeInDown.delay(index * 50).duration(300)}
-                  style={[
-                    styles.feederRow,
-                    showWideGrid && styles.tabletFeederRow,
-                    {
-                      borderColor: row.isStopped
-                        ? theme.warning + "40"
-                        : theme.border,
-                      backgroundColor: theme.backgroundDefault,
-                    },
-                  ]}
+                  style={
+                    showTabletLayout
+                      ? [styles.tabletGridItem, operationGridItemTabletStyle]
+                      : undefined
+                  }
                 >
-                  <View style={[styles.feederLabelRow, rtlRow]}>
-                    <View
-                      style={[
-                        styles.feederTitleGroup,
-                        isRTL && styles.feederTitleGroupRTL,
-                      ]}
-                    >
+                  <Animated.View
+                    entering={FadeInDown.delay(index * 50).duration(300)}
+                    style={[
+                      styles.feederRow,
+                      showTabletLayout && operationCardTabletStyle,
+                      {
+                        borderColor: row.isStopped
+                          ? showTabletLayout && !isDark
+                            ? withAlpha(theme.warning, 0.22)
+                            : theme.warning + "40"
+                          : showTabletLayout && !isDark
+                            ? withAlpha(theme.border, 0.68)
+                            : theme.border,
+                        backgroundColor: theme.backgroundDefault,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.feederLabelRow, rtlRow]}>
                       <View
                         style={[
-                          styles.feederBadge,
-                          { backgroundColor: theme.primary + "20" },
+                          styles.feederTitleGroup,
+                          isRTL && styles.feederTitleGroupRTL,
                         ]}
                       >
-                        <FeederCode
-                          code={f}
+                        <View
                           style={[
-                            styles.feederBadgeCode,
-                            { color: theme.primary },
+                            styles.feederBadge,
+                            { backgroundColor: theme.primary + "20" },
                           ]}
-                        />
+                        >
+                          <FeederCode
+                            code={f}
+                            style={[
+                              styles.feederBadgeCode,
+                              { color: theme.primary },
+                            ]}
+                          />
+                        </View>
+                        <View
+                          style={[
+                            styles.feederLabel,
+                            styles.feederLabelTextRow,
+                            isRTL && styles.feederLabelTextRowRTL,
+                          ]}
+                        >
+                          <ThemedText
+                            semanticVariant="labelSecondary"
+                            numberOfLines={1}
+                            style={styles.feederLabelText}
+                          >
+                            {t("feeder")}
+                          </ThemedText>
+                          <FeederCode
+                            code={f}
+                            style={[
+                              styles.feederInlineCode,
+                              isRTL && styles.feederInlineCodeRTL,
+                            ]}
+                          />
+                        </View>
                       </View>
                       <View
                         style={[
-                          styles.feederLabel,
-                          styles.feederLabelTextRow,
-                          isRTL && styles.feederLabelTextRowRTL,
+                          styles.statusPill,
+                          {
+                            backgroundColor:
+                              (row.isStopped ? theme.warning : theme.success) +
+                              "14",
+                            borderColor:
+                              (row.isStopped ? theme.warning : theme.success) +
+                              "30",
+                          },
                         ]}
                       >
                         <ThemedText
-                          semanticVariant="labelSecondary"
-                          numberOfLines={1}
-                          style={styles.feederLabelText}
+                          semanticVariant="tableCellLabel"
+                          style={{
+                            color: row.isStopped
+                              ? theme.warning
+                              : theme.success,
+                          }}
                         >
-                          {t("feeder")}
+                          {row.isStopped
+                            ? t("status_needs_input")
+                            : t("status_complete")}
                         </ThemedText>
-                        <FeederCode
-                          code={f}
-                          style={[
-                            styles.feederInlineCode,
-                            isRTL && styles.feederInlineCodeRTL,
-                          ]}
+                      </View>
+                    </View>
+
+                    <View
+                      style={[styles.inputsRow, isRTL && styles.inputsRowRTL]}
+                    >
+                      <View style={styles.readingInputWrap}>
+                        <NumericInputField
+                          label={t("start_of_day")}
+                          value={day.feeders[f]?.start || ""}
+                          onChangeValue={startChangeByFeeder[f]}
+                          testID={`input-${f}-start`}
+                          isInvalid={
+                            row.isStopped &&
+                            parseReading(day.feeders[f]?.start) === null
+                          }
+                          labelStyle={pairedInputTextStyle}
+                          textStyle={pairedInputTextStyle}
+                        />
+                      </View>
+                      <Pressable
+                        style={[
+                          styles.copyArrowButton,
+                          { backgroundColor: theme.primary + "20" },
+                        ]}
+                        onPress={() => handleCopyStartToEnd(f)}
+                        testID={`copy-${f}`}
+                      >
+                        <View
+                          style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}
+                        >
+                          <Feather
+                            name="arrow-right"
+                            size={16}
+                            color={theme.primary}
+                          />
+                        </View>
+                      </Pressable>
+                      <View style={styles.readingInputWrap}>
+                        <NumericInputField
+                          label={t("end_of_day")}
+                          value={day.feeders[f]?.end || ""}
+                          onChangeValue={endChangeByFeeder[f]}
+                          testID={`input-${f}-end`}
+                          isInvalid={
+                            row.isStopped &&
+                            parseReading(day.feeders[f]?.end) === null
+                          }
+                          labelStyle={pairedInputTextStyle}
+                          textStyle={pairedInputTextStyle}
                         />
                       </View>
                     </View>
+
                     <View
                       style={[
-                        styles.statusPill,
+                        styles.diffBox,
                         {
-                          backgroundColor:
-                            (row.isStopped ? theme.warning : theme.success) +
-                            "14",
-                          borderColor:
-                            (row.isStopped ? theme.warning : theme.success) +
-                            "30",
+                          backgroundColor: theme.primary + "15",
+                          borderColor: theme.primary + "40",
                         },
                       ]}
                     >
                       <ThemedText
-                        semanticVariant="tableCellLabel"
-                        style={{
-                          color: row.isStopped ? theme.warning : theme.success,
+                        semanticVariant="labelSecondary"
+                        style={{ color: theme.primary }}
+                      >
+                        {t("difference")}
+                      </ThemedText>
+                      <ValueWithUnit
+                        value={row.diff === null ? "-" : format2(row.diff)}
+                        unit={t("mw_unit")}
+                        type="h3"
+                        valueStyle={{
+                          ...styles.inlineNumericValue,
+                          color: theme.text,
                         }}
+                        unitStyle={{ color: theme.textSecondary }}
+                      />
+                    </View>
+
+                    <View style={[styles.rowFootnote, rtlRow]}>
+                      <Feather
+                        name={row.isStopped ? "alert-circle" : "check-circle"}
+                        size={14}
+                        color={row.isStopped ? theme.warning : theme.success}
+                      />
+                      <ThemedText
+                        semanticVariant="helper"
+                        style={{ color: theme.textSecondary }}
                       >
                         {row.isStopped
-                          ? t("status_needs_input")
-                          : t("status_complete")}
+                          ? t("no_reading_stopped")
+                          : t("status_ready")}
                       </ThemedText>
                     </View>
-                  </View>
-
-                  <View
-                    style={[styles.inputsRow, isRTL && styles.inputsRowRTL]}
-                  >
-                    <View style={styles.readingInputWrap}>
-                      <NumericInputField
-                        label={t("start_of_day")}
-                        value={day.feeders[f]?.start || ""}
-                        onChangeValue={startChangeByFeeder[f]}
-                        testID={`input-${f}-start`}
-                        isInvalid={
-                          row.isStopped &&
-                          parseReading(day.feeders[f]?.start) === null
-                        }
-                        labelStyle={pairedInputTextStyle}
-                        textStyle={pairedInputTextStyle}
-                      />
-                    </View>
-                    <Pressable
-                      style={[
-                        styles.copyArrowButton,
-                        { backgroundColor: theme.primary + "20" },
-                      ]}
-                      onPress={() => handleCopyStartToEnd(f)}
-                      testID={`copy-${f}`}
-                    >
-                      <View style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}>
-                        <Feather
-                          name="arrow-right"
-                          size={16}
-                          color={theme.primary}
-                        />
-                      </View>
-                    </Pressable>
-                    <View style={styles.readingInputWrap}>
-                      <NumericInputField
-                        label={t("end_of_day")}
-                        value={day.feeders[f]?.end || ""}
-                        onChangeValue={endChangeByFeeder[f]}
-                        testID={`input-${f}-end`}
-                        isInvalid={
-                          row.isStopped &&
-                          parseReading(day.feeders[f]?.end) === null
-                        }
-                        labelStyle={pairedInputTextStyle}
-                        textStyle={pairedInputTextStyle}
-                      />
-                    </View>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.diffBox,
-                      {
-                        backgroundColor: theme.primary + "15",
-                        borderColor: theme.primary + "40",
-                      },
-                    ]}
-                  >
-                    <ThemedText
-                      semanticVariant="labelSecondary"
-                      style={{ color: theme.primary }}
-                    >
-                      {t("difference")}
-                    </ThemedText>
-                    <ValueWithUnit
-                      value={row.diff === null ? "-" : format2(row.diff)}
-                      unit={t("mw_unit")}
-                      type="h3"
-                      valueStyle={{
-                        ...styles.inlineNumericValue,
-                        color: theme.text,
-                      }}
-                      unitStyle={{ color: theme.textSecondary }}
-                    />
-                  </View>
-
-                  <View style={[styles.rowFootnote, rtlRow]}>
-                    <Feather
-                      name={row.isStopped ? "alert-circle" : "check-circle"}
-                      size={14}
-                      color={row.isStopped ? theme.warning : theme.success}
-                    />
-                    <ThemedText
-                      semanticVariant="helper"
-                      style={{ color: theme.textSecondary }}
-                    >
-                      {row.isStopped
-                        ? t("no_reading_stopped")
-                        : t("status_ready")}
-                    </ThemedText>
-                  </View>
-                </Animated.View>
+                  </Animated.View>
+                </View>
               );
             })}
           </View>
@@ -821,6 +947,7 @@ export default function FeedersScreen() {
                 : theme.error + "15",
               borderColor: isExport ? theme.success : theme.error,
             },
+            tabletSummaryCardShadowStyle,
           ]}
         >
           <View
@@ -875,6 +1002,7 @@ export default function FeedersScreen() {
               backgroundColor: theme.backgroundDefault,
               borderColor: theme.border,
             },
+            tabletLargeSurfaceShadowStyle,
           ]}
         >
           <View
@@ -1156,6 +1284,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  overviewItemTablet: {
+    flexBasis: 0,
+    minWidth: 180,
+  },
   card: {
     borderRadius: BorderRadius.lg,
     marginBottom: Spacing.lg,
@@ -1182,11 +1314,14 @@ const styles = StyleSheet.create({
   tabletGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    padding: Spacing.sm,
+    justifyContent: "space-between",
+    paddingHorizontal: 0,
+    paddingVertical: Spacing.md,
   },
-  tabletFeederRow: {
-    width: "50%",
-    padding: Spacing.sm,
+  tabletGridItem: {
+    width: "48%",
+    flexBasis: "48%",
+    minWidth: 320,
   },
   feederRow: {
     padding: Spacing.lg,

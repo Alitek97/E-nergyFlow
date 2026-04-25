@@ -193,10 +193,7 @@ function SecondaryGroupSwipeContainer({
             !isSwipeSettling &&
             Boolean(leftRoute || rightRoute),
         )
-        .activeOffsetX([
-          -GESTURE_ACTIVATION_OFFSET,
-          GESTURE_ACTIVATION_OFFSET,
-        ])
+        .activeOffsetX([-GESTURE_ACTIVATION_OFFSET, GESTURE_ACTIVATION_OFFSET])
         .failOffsetY([-VERTICAL_FAIL_OFFSET, VERTICAL_FAIL_OFFSET])
         .onUpdate((event) => {
           const isSwipingLeft = event.translationX < 0;
@@ -280,9 +277,7 @@ function SecondaryGroupSwipeContainer({
 
   const previewSceneAnimatedStyle = useAnimatedStyle(() => {
     const progress =
-      screenWidth > 0
-        ? Math.abs(translateX.value) / screenWidth
-        : 0;
+      screenWidth > 0 ? Math.abs(translateX.value) / screenWidth : 0;
 
     return {
       opacity: interpolate(
@@ -305,10 +300,7 @@ function SecondaryGroupSwipeContainer({
   return (
     <SwipeControlContext.Provider value={contextValue}>
       <GestureDetector gesture={panGesture}>
-        <Animated.View
-          collapsable={false}
-          style={styles.container}
-        >
+        <Animated.View collapsable={false} style={styles.container}>
           {shouldRenderPreview && LeftPreviewComponent ? (
             <Animated.View
               pointerEvents="none"

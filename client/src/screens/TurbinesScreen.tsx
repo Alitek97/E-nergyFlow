@@ -60,7 +60,7 @@ export default function TurbinesScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const layout = useResponsiveLayout();
   const { dateKey, setDateKey, day, setDay, saveDay, resetDay, loading } =
     useDay();
@@ -75,16 +75,115 @@ export default function TurbinesScreen() {
   );
   const { rtlRow } = useRTL();
   const showWideGrid = layout.isWideLayout;
-  const scrollContentStyle = useMemo(
-    () =>
-      getResponsiveScrollContentStyle(layout, {
-        headerHeight,
-        tabBarHeight,
-        topSpacing: Spacing.lg,
-        bottomSpacing: Spacing.xl,
-      }),
-    [headerHeight, layout, tabBarHeight],
+  const showTabletLayout = layout.isWide;
+  const availableTabletWidth = Math.max(
+    layout.screenWidth - layout.horizontalPadding * 2,
+    0,
   );
+  const operationGridGap = showTabletLayout
+    ? getResponsiveValue(layout, {
+        tablet: 20,
+        tabletLandscape: 24,
+        largeTablet: 24,
+        largeTabletLandscape: 28,
+        default: layout.gridGap,
+      })
+    : 0;
+  const operationGridMaxWidth = showTabletLayout
+    ? Math.min(
+        availableTabletWidth,
+        getResponsiveValue(layout, {
+          tablet: 960,
+          tabletLandscape: 1040,
+          largeTablet: 1000,
+          largeTabletLandscape: 1100,
+          default: 960,
+        }),
+      )
+    : undefined;
+  const operationSectionMaxWidth =
+    showTabletLayout && operationGridMaxWidth !== undefined
+      ? Math.min(availableTabletWidth, operationGridMaxWidth + Spacing.lg * 2)
+      : undefined;
+  const operationGridTabletStyle =
+    showTabletLayout && operationGridMaxWidth !== undefined
+      ? ({
+          alignSelf: "center",
+          width: "100%",
+          maxWidth: operationGridMaxWidth,
+        } as const)
+      : undefined;
+  const operationGridItemTabletStyle = showTabletLayout
+    ? ({
+        marginBottom: operationGridGap,
+      } as const)
+    : undefined;
+  const operationSectionTabletStyle =
+    showTabletLayout && operationSectionMaxWidth !== undefined
+      ? ({
+          alignSelf: "center",
+          width: "100%",
+          maxWidth: operationSectionMaxWidth,
+          borderColor: withAlpha(theme.border, isDark ? 0.9 : 0.56),
+          shadowColor: theme.cardShadow,
+          shadowOffset: { width: 0, height: isDark ? 4 : 0 },
+          shadowOpacity: isDark ? 0.05 : 0,
+          shadowRadius: isDark ? 8 : 0,
+          elevation: isDark ? 1 : 0,
+        } as const)
+      : undefined;
+  const operationCardTabletStyle = showTabletLayout
+    ? ({
+        alignSelf: "stretch",
+        margin: 0,
+        padding: Spacing.lg,
+        width: "100%",
+        maxWidth: "100%",
+        shadowColor: theme.cardShadow,
+        shadowOffset: { width: 0, height: isDark ? 6 : 1 },
+        shadowOpacity: isDark ? 0.05 : 0.018,
+        shadowRadius: isDark ? 10 : 5,
+        elevation: isDark ? 2 : 0,
+      } as const)
+    : undefined;
+  const tabletLargeSurfaceShadowStyle = showTabletLayout
+    ? ({
+        borderColor: withAlpha(theme.border, isDark ? 0.72 : 0.54),
+        shadowColor: theme.cardShadow,
+        shadowOffset: { width: 0, height: isDark ? 4 : 0 },
+        shadowOpacity: isDark ? 0.05 : 0,
+        shadowRadius: isDark ? 8 : 0,
+        elevation: isDark ? 1 : 0,
+      } as const)
+    : undefined;
+  const tabletSummaryCardShadowStyle = showTabletLayout
+    ? ({
+        borderColor: withAlpha(theme.success, isDark ? 0.5 : 0.28),
+        shadowColor: theme.success,
+        shadowOffset: { width: 0, height: isDark ? 4 : 1 },
+        shadowOpacity: isDark ? 0.05 : 0.015,
+        shadowRadius: isDark ? 8 : 5,
+        elevation: isDark ? 1 : 0,
+      } as const)
+    : undefined;
+  const scrollContentStyle = useMemo(() => {
+    const baseStyle = getResponsiveScrollContentStyle(layout, {
+      headerHeight,
+      tabBarHeight,
+      topSpacing: Spacing.lg,
+      bottomSpacing: Spacing.xl,
+    });
+
+    return showTabletLayout && operationSectionMaxWidth !== undefined
+      ? { ...baseStyle, maxWidth: operationSectionMaxWidth }
+      : baseStyle;
+  }, [
+    headerHeight,
+    layout,
+    operationSectionMaxWidth,
+    showTabletLayout,
+    tabBarHeight,
+  ]);
   const datePickerModalWidth = Math.min(
     layout.contentWidth,
     getResponsiveValue(layout, {
@@ -384,6 +483,7 @@ export default function TurbinesScreen() {
                 backgroundColor: theme.backgroundDefault,
                 borderColor: theme.border,
               },
+              tabletLargeSurfaceShadowStyle,
             ]}
           >
             <View style={[styles.dateNavigationRow, rtlRow]}>
@@ -593,6 +693,7 @@ export default function TurbinesScreen() {
               backgroundColor: theme.backgroundDefault,
               borderColor: theme.border,
             },
+            tabletLargeSurfaceShadowStyle,
           ]}
         >
           <View style={[styles.overviewHeader, rtlRow]}>
@@ -625,6 +726,7 @@ export default function TurbinesScreen() {
                 key={item.key}
                 style={[
                   styles.overviewItem,
+                  showTabletLayout && styles.overviewItemTablet,
                   { backgroundColor: item.tone + "10" },
                 ]}
               >
@@ -679,6 +781,7 @@ export default function TurbinesScreen() {
               backgroundColor: theme.backgroundDefault,
               borderColor: theme.border,
             },
+            operationSectionTabletStyle,
           ]}
         >
           <View
@@ -701,7 +804,13 @@ export default function TurbinesScreen() {
             </ThemedText>
           </View>
 
-          <View style={showWideGrid ? styles.tabletGrid : undefined}>
+          <View
+            style={
+              showTabletLayout
+                ? [styles.tabletGrid, operationGridTabletStyle]
+                : undefined
+            }
+          >
             {TURBINES.map((t, index) => {
               const row = rows[index];
               const statusColor = row.isStopped
@@ -715,154 +824,203 @@ export default function TurbinesScreen() {
                   ? translate("status_check_values")
                   : translate("status_running");
               return (
-                <Animated.View
+                <View
                   key={t}
-                  entering={FadeInDown.delay(index * 50).duration(300)}
-                  style={[
-                    styles.turbineRow,
-                    showWideGrid && styles.tabletTurbineRow,
-                    {
-                      borderColor: statusColor + "40",
-                      backgroundColor: theme.backgroundDefault,
-                    },
-                  ]}
+                  style={
+                    showTabletLayout
+                      ? [styles.tabletGridItem, operationGridItemTabletStyle]
+                      : undefined
+                  }
                 >
-                  <View style={[styles.turbineLabelRow, rtlRow]}>
-                    <View
-                      style={[
-                        styles.turbineTitleGroup,
-                        isRTL && styles.turbineTitleGroupRTL,
-                      ]}
-                    >
+                  <Animated.View
+                    entering={FadeInDown.delay(index * 50).duration(300)}
+                    style={[
+                      styles.turbineRow,
+                      showTabletLayout && operationCardTabletStyle,
+                      {
+                        borderColor:
+                          showTabletLayout && !isDark
+                            ? withAlpha(statusColor, 0.22)
+                            : statusColor + "40",
+                        backgroundColor: theme.backgroundDefault,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.turbineLabelRow, rtlRow]}>
                       <View
                         style={[
-                          styles.turbineBadge,
-                          { backgroundColor: statusColor + "20" },
+                          styles.turbineTitleGroup,
+                          isRTL && styles.turbineTitleGroupRTL,
                         ]}
                       >
-                        <FeederCode
-                          code={t}
+                        <View
                           style={[
-                            styles.turbineBadgeCode,
-                            { color: statusColor },
+                            styles.turbineBadge,
+                            { backgroundColor: statusColor + "20" },
                           ]}
-                        />
+                        >
+                          <FeederCode
+                            code={t}
+                            style={[
+                              styles.turbineBadgeCode,
+                              { color: statusColor },
+                            ]}
+                          />
+                        </View>
+                        <View
+                          style={[
+                            styles.turbineLabel,
+                            styles.turbineLabelTextRow,
+                            isRTL && styles.turbineLabelTextRowRTL,
+                          ]}
+                        >
+                          <ThemedText
+                            semanticVariant="labelSecondary"
+                            numberOfLines={1}
+                            style={styles.turbineLabelText}
+                          >
+                            {translate("turbine")}
+                          </ThemedText>
+                          <FeederCode
+                            code={t}
+                            style={[
+                              styles.turbineInlineCode,
+                              isRTL && styles.turbineInlineCodeRTL,
+                            ]}
+                          />
+                        </View>
                       </View>
                       <View
-                        style={[
-                          styles.turbineLabel,
-                          styles.turbineLabelTextRow,
-                          isRTL && styles.turbineLabelTextRowRTL,
-                        ]}
+                        style={[styles.rowMeta, isRTL && styles.rowMetaRTL]}
                       >
-                        <ThemedText
-                          semanticVariant="labelSecondary"
-                          numberOfLines={1}
-                          style={styles.turbineLabelText}
-                        >
-                          {translate("turbine")}
-                        </ThemedText>
-                        <FeederCode
-                          code={t}
+                        <View
                           style={[
-                            styles.turbineInlineCode,
-                            isRTL && styles.turbineInlineCodeRTL,
+                            styles.statusPill,
+                            {
+                              backgroundColor: statusColor + "14",
+                              borderColor: statusColor + "30",
+                            },
                           ]}
+                        >
+                          <ThemedText
+                            semanticVariant="tableCellLabel"
+                            style={{ color: statusColor }}
+                          >
+                            {statusLabel}
+                          </ThemedText>
+                        </View>
+                        <HoursChip
+                          label={translate("hours")}
+                          value={day.turbines[t]?.hours || "24"}
+                          onPress={() => handleOpenHoursPicker(t)}
+                          testID={`input-${t}-hours`}
                         />
                       </View>
                     </View>
-                    <View style={[styles.rowMeta, isRTL && styles.rowMetaRTL]}>
+
+                    <View
+                      style={[styles.inputsRow, isRTL && styles.inputsRowRTL]}
+                    >
+                      <View style={styles.readingInputWrap}>
+                        <NumericInputField
+                          label={translate("previous")}
+                          value={day.turbines[t]?.previous || ""}
+                          onChangeValue={previousChangeByTurbine[t]}
+                          testID={`input-${t}-previous`}
+                          isInvalid={
+                            row.isStopped &&
+                            parseReading(day.turbines[t]?.previous) === null
+                          }
+                          labelStyle={pairedInputTextStyle}
+                          textStyle={pairedInputTextStyle}
+                        />
+                      </View>
+                      <Pressable
+                        style={[
+                          styles.copyArrowButton,
+                          { backgroundColor: theme.primary + "20" },
+                        ]}
+                        onPress={() => handleCopyPreviousToPresent(t)}
+                        testID={`copy-${t}`}
+                      >
+                        <View
+                          style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}
+                        >
+                          <Feather
+                            name="arrow-right"
+                            size={16}
+                            color={theme.primary}
+                          />
+                        </View>
+                      </Pressable>
+                      <View style={styles.readingInputWrap}>
+                        <NumericInputField
+                          label={translate("present")}
+                          value={day.turbines[t]?.present || ""}
+                          onChangeValue={presentChangeByTurbine[t]}
+                          testID={`input-${t}-present`}
+                          isInvalid={
+                            row.isStopped &&
+                            parseReading(day.turbines[t]?.present) === null
+                          }
+                          labelStyle={pairedInputTextStyle}
+                          textStyle={pairedInputTextStyle}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.resultsRow}>
                       <View
                         style={[
-                          styles.statusPill,
+                          styles.resultBox,
                           {
-                            backgroundColor: statusColor + "14",
-                            borderColor: statusColor + "30",
+                            backgroundColor: theme.primary + "15",
+                            borderColor: theme.primary + "40",
                           },
                         ]}
                       >
                         <ThemedText
-                          semanticVariant="tableCellLabel"
-                          style={{ color: statusColor }}
+                          semanticVariant="tableHeader"
+                          style={{ color: theme.primary }}
                         >
-                          {statusLabel}
+                          {translate("difference")}
                         </ThemedText>
+                        <View style={styles.valueWithUnitRow}>
+                          <NumberText
+                            tier="output"
+                            style={[
+                              styles.inlineNumericValue,
+                              { color: theme.text },
+                            ]}
+                          >
+                            {row.diff === null ? "-" : format2(row.diff)}
+                          </NumberText>
+                          <ThemedText
+                            semanticVariant="unit"
+                            style={{
+                              color: theme.textSecondary,
+                              opacity: 0.88,
+                            }}
+                          >
+                            {translate("mwh")}
+                          </ThemedText>
+                        </View>
                       </View>
-                      <HoursChip
-                        label={translate("hours")}
-                        value={day.turbines[t]?.hours || "24"}
-                        onPress={() => handleOpenHoursPicker(t)}
-                        testID={`input-${t}-hours`}
-                      />
-                    </View>
-                  </View>
-
-                  <View
-                    style={[styles.inputsRow, isRTL && styles.inputsRowRTL]}
-                  >
-                    <View style={styles.readingInputWrap}>
-                      <NumericInputField
-                        label={translate("previous")}
-                        value={day.turbines[t]?.previous || ""}
-                        onChangeValue={previousChangeByTurbine[t]}
-                        testID={`input-${t}-previous`}
-                        isInvalid={
-                          row.isStopped &&
-                          parseReading(day.turbines[t]?.previous) === null
-                        }
-                        labelStyle={pairedInputTextStyle}
-                        textStyle={pairedInputTextStyle}
-                      />
-                    </View>
-                    <Pressable
-                      style={[
-                        styles.copyArrowButton,
-                        { backgroundColor: theme.primary + "20" },
-                      ]}
-                      onPress={() => handleCopyPreviousToPresent(t)}
-                      testID={`copy-${t}`}
-                    >
-                      <View style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}>
-                        <Feather
-                          name="arrow-right"
-                          size={16}
-                          color={theme.primary}
-                        />
-                      </View>
-                    </Pressable>
-                    <View style={styles.readingInputWrap}>
-                      <NumericInputField
-                        label={translate("present")}
-                        value={day.turbines[t]?.present || ""}
-                        onChangeValue={presentChangeByTurbine[t]}
-                        testID={`input-${t}-present`}
-                        isInvalid={
-                          row.isStopped &&
-                          parseReading(day.turbines[t]?.present) === null
-                        }
-                        labelStyle={pairedInputTextStyle}
-                        textStyle={pairedInputTextStyle}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.resultsRow}>
-                    <View
-                      style={[
-                        styles.resultBox,
-                        {
-                          backgroundColor: theme.primary + "15",
-                          borderColor: theme.primary + "40",
-                        },
-                      ]}
-                    >
-                      <ThemedText
-                        semanticVariant="tableHeader"
-                        style={{ color: theme.primary }}
+                      <View
+                        style={[
+                          styles.resultBox,
+                          {
+                            backgroundColor: theme.success + "15",
+                            borderColor: theme.success + "40",
+                          },
+                        ]}
                       >
-                        {translate("difference")}
-                      </ThemedText>
-                      <View style={styles.valueWithUnitRow}>
+                        <ThemedText
+                          semanticVariant="tableHeader"
+                          style={{ color: theme.success }}
+                        >
+                          {translate("mw_per_hr")}
+                        </ThemedText>
                         <NumberText
                           tier="output"
                           style={[
@@ -870,67 +1028,36 @@ export default function TurbinesScreen() {
                             { color: theme.text },
                           ]}
                         >
-                          {row.diff === null ? "-" : format2(row.diff)}
+                          {row.mwPerHr === null ? "-" : format2(row.mwPerHr)}
                         </NumberText>
-                        <ThemedText
-                          semanticVariant="unit"
-                          style={{ color: theme.textSecondary, opacity: 0.88 }}
-                        >
-                          {translate("mwh")}
-                        </ThemedText>
                       </View>
                     </View>
-                    <View
-                      style={[
-                        styles.resultBox,
-                        {
-                          backgroundColor: theme.success + "15",
-                          borderColor: theme.success + "40",
-                        },
-                      ]}
-                    >
-                      <ThemedText
-                        semanticVariant="tableHeader"
-                        style={{ color: theme.success }}
-                      >
-                        {translate("mw_per_hr")}
-                      </ThemedText>
-                      <NumberText
-                        tier="output"
-                        style={[
-                          styles.inlineNumericValue,
-                          { color: theme.text },
-                        ]}
-                      >
-                        {row.mwPerHr === null ? "-" : format2(row.mwPerHr)}
-                      </NumberText>
-                    </View>
-                  </View>
 
-                  <View style={[styles.rowFootnote, rtlRow]}>
-                    <Feather
-                      name={
-                        row.isStopped
-                          ? "alert-circle"
+                    <View style={[styles.rowFootnote, rtlRow]}>
+                      <Feather
+                        name={
+                          row.isStopped
+                            ? "alert-circle"
+                            : row.hasError
+                              ? "alert-triangle"
+                              : "check-circle"
+                        }
+                        size={14}
+                        color={statusColor}
+                      />
+                      <ThemedText
+                        semanticVariant="helper"
+                        style={{ color: theme.textSecondary }}
+                      >
+                        {row.isStopped
+                          ? translate("no_reading_stopped")
                           : row.hasError
-                            ? "alert-triangle"
-                            : "check-circle"
-                      }
-                      size={14}
-                      color={statusColor}
-                    />
-                    <ThemedText
-                      semanticVariant="helper"
-                      style={{ color: theme.textSecondary }}
-                    >
-                      {row.isStopped
-                        ? translate("no_reading_stopped")
-                        : row.hasError
-                          ? translate("turbine_error")
-                          : translate("status_ready")}
-                    </ThemedText>
-                  </View>
-                </Animated.View>
+                            ? translate("turbine_error")
+                            : translate("status_ready")}
+                      </ThemedText>
+                    </View>
+                  </Animated.View>
+                </View>
               );
             })}
           </View>
@@ -944,6 +1071,7 @@ export default function TurbinesScreen() {
               backgroundColor: theme.success + "15",
               borderColor: theme.success,
             },
+            tabletSummaryCardShadowStyle,
           ]}
         >
           <View
@@ -986,6 +1114,7 @@ export default function TurbinesScreen() {
               backgroundColor: theme.backgroundDefault,
               borderColor: theme.border,
             },
+            tabletLargeSurfaceShadowStyle,
           ]}
         >
           <View
@@ -1275,6 +1404,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  overviewItemTablet: {
+    flexBasis: 0,
+    minWidth: 180,
+  },
   card: {
     borderRadius: BorderRadius.lg,
     marginBottom: Spacing.lg,
@@ -1301,11 +1434,14 @@ const styles = StyleSheet.create({
   tabletGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    padding: Spacing.sm,
+    justifyContent: "space-between",
+    paddingHorizontal: 0,
+    paddingVertical: Spacing.md,
   },
-  tabletTurbineRow: {
-    width: "50%",
-    padding: Spacing.sm,
+  tabletGridItem: {
+    width: "48%",
+    flexBasis: "48%",
+    minWidth: 320,
   },
   turbineRow: {
     padding: Spacing.lg,

@@ -97,9 +97,9 @@ export default function FocusedTileTabBar({
     null,
   );
   const secondaryProgress = useRef(new Animated.Value(0)).current;
-  const secondaryAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const secondaryAutoHideTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const pendingPrimaryNavigationGroupRef = useRef<MainTabGroupId | null>(null);
   const latestSecondaryGroupRef = useRef<MainTabGroupId | null>(null);
   const setSecondaryVisibilityRef = useRef<
