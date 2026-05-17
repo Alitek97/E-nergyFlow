@@ -1,5 +1,9 @@
 import { supabase } from "./supabase";
 import {
+  canUseRemoteNetwork,
+  shouldSilenceExpectedOfflineError,
+} from "./connectivity";
+import {
   DayData,
   FeederData,
   TurbineData,
@@ -7,16 +11,35 @@ import {
   FEEDERS,
   TURBINES,
   defaultDay,
+  getDayData,
   getPreviousDateKey,
   saveDayData,
   parseReading,
 } from "./storage";
+
+async function canStartRemoteRequest(): Promise<boolean> {
+  return canUseRemoteNetwork();
+}
+
+async function logSupabaseError(
+  message: string,
+  error: unknown,
+): Promise<void> {
+  if (await shouldSilenceExpectedOfflineError(error)) {
+    if (__DEV__) console.warn(`${message} skipped while offline.`);
+    return;
+  }
+
+  console.error(`${message}:`, error);
+}
 
 export async function syncDayToSupabase(
   userId: string,
   day: DayData,
   options: { updatedAt?: string } = {},
 ): Promise<boolean> {
+  if (!(await canStartRemoteRequest())) return false;
+
   try {
     const updatedAt =
       options.updatedAt ?? day.updatedAt ?? new Date().toISOString();
@@ -41,12 +64,12 @@ export async function syncDayToSupabase(
         .single();
 
       if (insertError || !newDay) {
-        console.error("Error creating daily_data:", insertError);
+        await logSupabaseError("Error creating daily_data", insertError);
         return false;
       }
       dailyDataId = newDay.id;
     } else if (fetchError) {
-      console.error("Error fetching daily_data:", fetchError);
+      await logSupabaseError("Error fetching daily_data", fetchError);
       return false;
     } else {
       dailyDataId = existingDay.id;
@@ -56,7 +79,7 @@ export async function syncDayToSupabase(
         .eq("id", dailyDataId);
 
       if (updateDayError) {
-        console.error("Error touching daily_data:", updateDayError);
+        await logSupabaseError("Error touching daily_data", updateDayError);
         return false;
       }
     }
@@ -81,7 +104,7 @@ export async function syncDayToSupabase(
       );
 
       if (error) {
-        console.error(`Error upserting feeder ${feederName}:`, error);
+        await logSupabaseError(`Error upserting feeder ${feederName}`, error);
         hadRowError = true;
       }
     }
@@ -113,14 +136,14 @@ export async function syncDayToSupabase(
       );
 
       if (error) {
-        console.error(`Error upserting turbine ${turbineName}:`, error);
+        await logSupabaseError(`Error upserting turbine ${turbineName}`, error);
         hadRowError = true;
       }
     }
 
     return !hadRowError;
   } catch (error) {
-    console.error("Error syncing day to Supabase:", error);
+    await logSupabaseError("Error syncing day to Supabase", error);
     return false;
   }
 }
@@ -129,6 +152,8 @@ export async function fetchDayFromSupabase(
   userId: string,
   dateKey: string,
 ): Promise<DayData | null> {
+  if (!(await canStartRemoteRequest())) return null;
+
   try {
     const { data: dailyData, error: dayError } = await supabase
       .from("daily_data")
@@ -141,7 +166,7 @@ export async function fetchDayFromSupabase(
       if (dayError.code === "PGRST116") {
         return null;
       }
-      console.error("Error fetching daily_data:", dayError);
+      await logSupabaseError("Error fetching daily_data", dayError);
       return null;
     }
 
@@ -151,7 +176,7 @@ export async function fetchDayFromSupabase(
       .eq("daily_data_id", dailyData.id);
 
     if (feedersError) {
-      console.error("Error fetching feeders:", feedersError);
+      await logSupabaseError("Error fetching feeders", feedersError);
     }
 
     const { data: turbinesData, error: turbinesError } = await supabase
@@ -160,7 +185,7 @@ export async function fetchDayFromSupabase(
       .eq("daily_data_id", dailyData.id);
 
     if (turbinesError) {
-      console.error("Error fetching turbines:", turbinesError);
+      await logSupabaseError("Error fetching turbines", turbinesError);
     }
 
     const feeders: Record<string, FeederData> = {};
@@ -189,7 +214,7 @@ export async function fetchDayFromSupabase(
       updatedAt: dailyData.updated_at,
     };
   } catch (error) {
-    console.error("Error fetching day from Supabase:", error);
+    await logSupabaseError("Error fetching day from Supabase", error);
     return null;
   }
 }
@@ -204,10 +229,19 @@ export interface RemoteDaySnapshot extends RemoteDayMeta {
   day: DayData;
 }
 
-export async function fetchRemoteDayMeta(
+interface RemoteDayMetaResult {
+  meta: RemoteDayMeta | null;
+  requestFailed: boolean;
+}
+
+async function fetchRemoteDayMetaResult(
   userId: string,
   dateKey: string,
-): Promise<RemoteDayMeta | null> {
+): Promise<RemoteDayMetaResult> {
+  if (!(await canStartRemoteRequest())) {
+    return { meta: null, requestFailed: true };
+  }
+
   try {
     const { data, error } = await supabase
       .from("daily_data")
@@ -217,25 +251,40 @@ export async function fetchRemoteDayMeta(
       .single();
 
     if (error) {
-      if (error.code === "PGRST116") return null;
+      if (error.code === "PGRST116") {
+        return { meta: null, requestFailed: false };
+      }
       throw error;
     }
 
     return {
-      remoteId: data.id,
-      dateKey: data.date_key,
-      updatedAt: data.updated_at,
+      meta: {
+        remoteId: data.id,
+        dateKey: data.date_key,
+        updatedAt: data.updated_at,
+      },
+      requestFailed: false,
     };
   } catch (error) {
-    console.error("Error fetching remote day metadata:", error);
-    return null;
+    await logSupabaseError("Error fetching remote day metadata", error);
+    return { meta: null, requestFailed: true };
   }
+}
+
+export async function fetchRemoteDayMeta(
+  userId: string,
+  dateKey: string,
+): Promise<RemoteDayMeta | null> {
+  const result = await fetchRemoteDayMetaResult(userId, dateKey);
+  return result.meta;
 }
 
 export async function fetchRemoteDaySnapshot(
   userId: string,
   dateKey: string,
 ): Promise<RemoteDaySnapshot | null> {
+  if (!(await canStartRemoteRequest())) return null;
+
   const [meta, day] = await Promise.all([
     fetchRemoteDayMeta(userId, dateKey),
     fetchDayFromSupabase(userId, dateKey),
@@ -255,6 +304,8 @@ export async function fetchRemoteDaySnapshot(
 export async function fetchAllRemoteDayMeta(
   userId: string,
 ): Promise<RemoteDayMeta[]> {
+  if (!(await canStartRemoteRequest())) return [];
+
   try {
     const { data, error } = await supabase
       .from("daily_data")
@@ -263,7 +314,8 @@ export async function fetchAllRemoteDayMeta(
       .order("date_key", { ascending: true });
 
     if (error || !data) {
-      if (error) console.error("Error fetching remote day metadata:", error);
+      if (error)
+        await logSupabaseError("Error fetching remote day metadata", error);
       return [];
     }
 
@@ -273,7 +325,7 @@ export async function fetchAllRemoteDayMeta(
       updatedAt: row.updated_at,
     }));
   } catch (error) {
-    console.error("Error fetching all remote day metadata:", error);
+    await logSupabaseError("Error fetching all remote day metadata", error);
     return [];
   }
 }
@@ -282,7 +334,13 @@ export async function deleteDayFromSupabaseByDateKey(
   userId: string,
   dateKey: string,
 ): Promise<boolean> {
-  const meta = await fetchRemoteDayMeta(userId, dateKey);
+  if (!(await canStartRemoteRequest())) return false;
+
+  const { meta, requestFailed } = await fetchRemoteDayMetaResult(
+    userId,
+    dateKey,
+  );
+  if (requestFailed) return false;
   if (!meta) return true;
   return deleteDayFromSupabase(meta.remoteId);
 }
@@ -290,6 +348,8 @@ export async function deleteDayFromSupabaseByDateKey(
 export async function fetchAllDaysFromSupabase(
   userId: string,
 ): Promise<string[]> {
+  if (!(await canStartRemoteRequest())) return [];
+
   try {
     const { data, error } = await supabase
       .from("daily_data")
@@ -298,13 +358,13 @@ export async function fetchAllDaysFromSupabase(
       .order("date_key", { ascending: true });
 
     if (error) {
-      console.error("Error fetching all days:", error);
+      await logSupabaseError("Error fetching all days", error);
       return [];
     }
 
     return data.map((d) => d.date_key);
   } catch (error) {
-    console.error("Error fetching all days from Supabase:", error);
+    await logSupabaseError("Error fetching all days from Supabase", error);
     return [];
   }
 }
@@ -312,6 +372,8 @@ export async function fetchAllDaysFromSupabase(
 export async function fetchUserProfile(
   userId: string,
 ): Promise<UserSettings | null> {
+  if (!(await canStartRemoteRequest())) return null;
+
   try {
     const { data, error } = await supabase
       .from("profiles")
@@ -320,7 +382,7 @@ export async function fetchUserProfile(
       .single();
 
     if (error) {
-      console.error("Error fetching profile:", error);
+      await logSupabaseError("Error fetching profile", error);
       return null;
     }
 
@@ -330,7 +392,7 @@ export async function fetchUserProfile(
       updatedAt: data.updated_at,
     };
   } catch (error) {
-    console.error("Error fetching user profile:", error);
+    await logSupabaseError("Error fetching user profile", error);
     return null;
   }
 }
@@ -339,6 +401,8 @@ export async function updateUserProfile(
   userId: string,
   settings: Partial<UserSettings>,
 ): Promise<boolean> {
+  if (!(await canStartRemoteRequest())) return false;
+
   try {
     const updates: Record<string, unknown> = {};
     if (settings.displayName !== undefined) {
@@ -355,13 +419,13 @@ export async function updateUserProfile(
       .eq("id", userId);
 
     if (error) {
-      console.error("Error updating profile:", error);
+      await logSupabaseError("Error updating profile", error);
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error("Error updating user profile:", error);
+    await logSupabaseError("Error updating user profile", error);
     return false;
   }
 }
@@ -370,6 +434,8 @@ export async function syncLocalDataToSupabase(
   userId: string,
   localDays: DayData[],
 ): Promise<number> {
+  if (!(await canStartRemoteRequest())) return 0;
+
   let synced = 0;
   for (const day of localDays) {
     const success = await syncDayToSupabase(userId, day);
@@ -390,6 +456,8 @@ export async function fetchMonthDaysFromSupabase(
   userId: string,
   monthKey: string,
 ): Promise<DaySummary[]> {
+  if (!(await canStartRemoteRequest())) return [];
+
   try {
     const [year, month] = monthKey.split("-").map(Number);
     const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -406,7 +474,7 @@ export async function fetchMonthDaysFromSupabase(
       .order("date_key", { ascending: false });
 
     if (error || !dailyData) {
-      console.error("Error fetching month days:", error);
+      await logSupabaseError("Error fetching month days", error);
       return [];
     }
 
@@ -456,7 +524,7 @@ export async function fetchMonthDaysFromSupabase(
 
     return summaries;
   } catch (error) {
-    console.error("Error fetching month days:", error);
+    await logSupabaseError("Error fetching month days", error);
     return [];
   }
 }
@@ -472,6 +540,8 @@ export async function fetchRecentDaysFullFromSupabase(
   userId: string,
   limit: number = 7,
 ): Promise<DayData[]> {
+  if (!(await canStartRemoteRequest())) return [];
+
   try {
     const { data: dailyData, error } = await supabase
       .from("daily_data")
@@ -553,7 +623,7 @@ export async function fetchRecentDaysFullFromSupabase(
 
     return results.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
   } catch (error) {
-    console.error("Error fetching recent days full:", error);
+    await logSupabaseError("Error fetching recent days full", error);
     return [];
   }
 }
@@ -562,6 +632,8 @@ export async function fetchRecentDaysFromSupabase(
   userId: string,
   limit: number = 7,
 ): Promise<DayChartData[]> {
+  if (!(await canStartRemoteRequest())) return [];
+
   try {
     const { data: dailyData, error } = await supabase
       .from("daily_data")
@@ -646,7 +718,7 @@ export async function fetchRecentDaysFromSupabase(
 
     return results.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
   } catch (error) {
-    console.error("Error fetching recent days:", error);
+    await logSupabaseError("Error fetching recent days", error);
     return [];
   }
 }
@@ -667,6 +739,8 @@ export interface MonthListItem {
 export async function fetchMonthsListFromSupabase(
   userId: string,
 ): Promise<MonthListItem[]> {
+  if (!(await canStartRemoteRequest())) return [];
+
   try {
     const { data: dailyData, error } = await supabase
       .from("daily_data")
@@ -687,7 +761,7 @@ export async function fetchMonthsListFromSupabase(
       .map(([month, days]) => ({ month, days }))
       .sort((a, b) => b.month.localeCompare(a.month));
   } catch (error) {
-    console.error("Error fetching months list:", error);
+    await logSupabaseError("Error fetching months list", error);
     return [];
   }
 }
@@ -696,6 +770,8 @@ export async function fetchSingleMonthFromSupabase(
   userId: string,
   monthKey: string,
 ): Promise<MonthSummary | null> {
+  if (!(await canStartRemoteRequest())) return null;
+
   try {
     const monthStart = `${monthKey}-01`;
     const [year, month] = monthKey.split("-").map(Number);
@@ -757,7 +833,7 @@ export async function fetchSingleMonthFromSupabase(
       totalConsumption: totalProduction - totalExport,
     };
   } catch (error) {
-    console.error("Error fetching single month:", error);
+    await logSupabaseError("Error fetching single month", error);
     return null;
   }
 }
@@ -765,6 +841,8 @@ export async function fetchSingleMonthFromSupabase(
 export async function fetchAllMonthsFromSupabase(
   userId: string,
 ): Promise<MonthSummary[]> {
+  if (!(await canStartRemoteRequest())) return [];
+
   try {
     const { data: dailyData, error } = await supabase
       .from("daily_data")
@@ -863,12 +941,14 @@ export async function fetchAllMonthsFromSupabase(
       b.month.localeCompare(a.month),
     );
   } catch (error) {
-    console.error("Error fetching all months:", error);
+    await logSupabaseError("Error fetching all months", error);
     return [];
   }
 }
 
 export async function deleteDayFromSupabase(dayId: string): Promise<boolean> {
+  if (!(await canStartRemoteRequest())) return false;
+
   try {
     const { error: feedersError } = await supabase
       .from("feeders")
@@ -876,7 +956,7 @@ export async function deleteDayFromSupabase(dayId: string): Promise<boolean> {
       .eq("daily_data_id", dayId);
 
     if (feedersError) {
-      console.error("Error deleting feeders:", feedersError);
+      await logSupabaseError("Error deleting feeders", feedersError);
       return false;
     }
 
@@ -886,7 +966,7 @@ export async function deleteDayFromSupabase(dayId: string): Promise<boolean> {
       .eq("daily_data_id", dayId);
 
     if (turbinesError) {
-      console.error("Error deleting turbines:", turbinesError);
+      await logSupabaseError("Error deleting turbines", turbinesError);
       return false;
     }
 
@@ -896,13 +976,13 @@ export async function deleteDayFromSupabase(dayId: string): Promise<boolean> {
       .eq("id", dayId);
 
     if (dayError) {
-      console.error("Error deleting daily_data:", dayError);
+      await logSupabaseError("Error deleting daily_data", dayError);
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error("Error deleting day:", error);
+    await logSupabaseError("Error deleting day", error);
     return false;
   }
 }
@@ -916,6 +996,13 @@ export async function initializeDayCarryOver(
   userId: string,
   targetDateKey: string,
 ): Promise<CarryOverResult> {
+  if (!(await canStartRemoteRequest())) {
+    const localDay = await getDayData(targetDateKey).catch(() =>
+      defaultDay(targetDateKey),
+    );
+    return { day: localDay, wasUpdated: false };
+  }
+
   const prevDateKey = getPreviousDateKey(targetDateKey);
 
   const [targetDay, prevDay] = await Promise.all([

@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { canUseRemoteNetwork } from "@/lib/connectivity";
 
 export type UserProfile = {
   id: string;
@@ -25,6 +26,7 @@ function mapProfile(row: ProfileRow): UserProfile {
 
 export async function getProfile(userId: string): Promise<UserProfile | null> {
   if (!isSupabaseConfigured) return null;
+  if (!(await canUseRemoteNetwork())) return null;
 
   const { data, error } = await supabase
     .from("profiles")
@@ -48,6 +50,9 @@ export async function upsertProfile({
   if (!isSupabaseConfigured) {
     throw new Error("Supabase is not configured");
   }
+  if (!(await canUseRemoteNetwork())) {
+    throw new Error("Cannot update profile while offline");
+  }
 
   const payload: Record<string, unknown> = {
     id: userId,
@@ -70,6 +75,7 @@ export async function ensureProfile(
   userId: string,
 ): Promise<UserProfile | null> {
   if (!isSupabaseConfigured) return null;
+  if (!(await canUseRemoteNetwork())) return null;
 
   const existing = await getProfile(userId);
   if (existing) return existing;

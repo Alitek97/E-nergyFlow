@@ -15,7 +15,10 @@ import {
   storeGuestUserId,
 } from "@/lib/guestAuth";
 import { ensureProfile, UserProfile } from "@/lib/profile";
-import { getCurrentConnectivity } from "@/lib/connectivity";
+import {
+  getCurrentConnectivity,
+  shouldSilenceExpectedOfflineError,
+} from "@/lib/connectivity";
 import { setActiveLocalUserId } from "@/lib/localDb";
 
 interface AuthContextType {
@@ -157,7 +160,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setSession(newSession);
         setUser(newSession?.user ?? null);
       } catch (error) {
-        console.error("Auth initialization error:", error);
+        if (await shouldSilenceExpectedOfflineError(error)) {
+          if (__DEV__)
+            console.warn("Auth initialization skipped while offline.");
+        } else {
+          console.error("Auth initialization error:", error);
+        }
         setAuthError("Failed to connect to server");
       } finally {
         setLoading(false);

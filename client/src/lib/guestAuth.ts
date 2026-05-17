@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { canUseRemoteNetwork } from "@/lib/connectivity";
 import { supabase } from "./supabase";
 
 const GUEST_USER_ID_KEY = "pp-app:guest-user-id";
@@ -21,6 +22,14 @@ export async function signInAsGuest(): Promise<{
   error?: string;
   requiresSetup?: boolean;
 }> {
+  if (!(await canUseRemoteNetwork())) {
+    return {
+      success: false,
+      error: "Anonymous sign-in skipped while offline.",
+      requiresSetup: false,
+    };
+  }
+
   try {
     const { data: anonData, error: anonError } =
       await supabase.auth.signInAnonymously();

@@ -1,4 +1,8 @@
-import { getCurrentConnectivity } from "@/lib/connectivity";
+import {
+  canUseRemoteNetwork,
+  getCurrentConnectivity,
+  isExpectedOfflineError,
+} from "@/lib/connectivity";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   getDayData,
@@ -52,6 +56,13 @@ type SettingsSyncPayload = {
 
 let runningSync: Promise<SyncRunResult> | null = null;
 
+class SyncPausedOfflineError extends Error {
+  constructor() {
+    super("Sync paused while offline");
+    this.name = "SyncPausedOfflineError";
+  }
+}
+
 function compareTimestamp(
   left: string | null | undefined,
   right: string | null | undefined,
@@ -65,6 +76,27 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function assertStillOnline(): Promise<void> {
+  if (!(await canUseRemoteNetwork())) {
+    throw new SyncPausedOfflineError();
+  }
+}
+
+async function assertRemoteSuccess(
+  success: boolean,
+  message: string,
+): Promise<void> {
+  if (success) return;
+  await assertStillOnline();
+  throw new Error(message);
+}
+
+async function isOfflineSyncError(error: unknown): Promise<boolean> {
+  if (error instanceof SyncPausedOfflineError) return true;
+  if (!isExpectedOfflineError(error)) return false;
+  return !(await canUseRemoteNetwork());
+}
+
 async function pushDayUpdate(
   userId: string,
   record: SyncQueueRecord,
@@ -75,6 +107,7 @@ async function pushDayUpdate(
   const localUpdatedAt =
     localMeta?.updatedAt ?? payload.updatedAt ?? new Date().toISOString();
   const remote = await fetchRemoteDaySnapshot(userId, dateKey);
+  await assertStillOnline();
 
   if (remote && compareTimestamp(remote.updatedAt, localUpdatedAt) > 0) {
     await saveDayData(remote.day, {
@@ -92,10 +125,7 @@ async function pushDayUpdate(
   const success = await syncDayToSupabase(userId, localDay, {
     updatedAt: localUpdatedAt,
   });
-
-  if (!success) {
-    throw new Error(`Failed to upload day ${dateKey}`);
-  }
+  await assertRemoteSuccess(success, `Failed to upload day ${dateKey}`);
 
   return "pushed";
 }
@@ -108,12 +138,14 @@ async function pushDayDelete(
   const dateKey = payload.dateKey;
   const localDeletedAt = payload.updatedAt ?? new Date().toISOString();
   const remoteMeta = await fetchRemoteDayMeta(userId, dateKey);
+  await assertStillOnline();
 
   if (
     remoteMeta &&
     compareTimestamp(remoteMeta.updatedAt, localDeletedAt) > 0
   ) {
     const remote = await fetchRemoteDaySnapshot(userId, dateKey);
+    await assertStillOnline();
     if (remote) {
       await saveDayData(remote.day, {
         source: "sync",
@@ -125,9 +157,7 @@ async function pushDayDelete(
   }
 
   const success = await deleteDayFromSupabaseByDateKey(userId, dateKey);
-  if (!success) {
-    throw new Error(`Failed to delete day ${dateKey}`);
-  }
+  await assertRemoteSuccess(success, `Failed to delete day ${dateKey}`);
 
   return "pushed";
 }
@@ -141,6 +171,7 @@ async function pushSettings(
   const localUpdatedAt =
     payload.updatedAt ?? localSettings.updatedAt ?? new Date().toISOString();
   const remoteSettings = await fetchUserProfile(userId);
+  await assertStillOnline();
 
   if (
     remoteSettings?.updatedAt &&
@@ -157,9 +188,7 @@ async function pushSettings(
     ...localSettings,
     updatedAt: localUpdatedAt,
   });
-  if (!success) {
-    throw new Error("Failed to upload settings");
-  }
+  await assertRemoteSuccess(success, "Failed to upload settings");
 
   return "pushed";
 }
@@ -168,6 +197,7 @@ async function processQueue(userId: string): Promise<{
   pushed: number;
   pulled: number;
   failed: number;
+  offline: boolean;
 }> {
   let pushed = 0;
   let pulled = 0;
@@ -190,13 +220,18 @@ async function processQueue(userId: string): Promise<{
       if (result === "pushed") pushed += 1;
       else pulled += 1;
     } catch (error) {
+      if (await isOfflineSyncError(error)) {
+        if (__DEV__) console.warn("Sync paused while offline.");
+        return { pushed, pulled, failed, offline: true };
+      }
+
       failed += 1;
       await markSyncRecordFailed(record.id, error);
       console.warn("Sync queue item failed:", error);
     }
   }
 
-  return { pushed, pulled, failed };
+  return { pushed, pulled, failed, offline: false };
 }
 
 async function pullRemoteChanges(userId: string): Promise<{
@@ -206,6 +241,7 @@ async function pullRemoteChanges(userId: string): Promise<{
   let pushed = 0;
   let pulled = 0;
   const remoteDays = await fetchAllRemoteDayMeta(userId);
+  await assertStillOnline();
 
   for (const remoteMeta of remoteDays) {
     const hasPending = await hasPendingSyncForEntity({
@@ -221,6 +257,7 @@ async function pullRemoteChanges(userId: string): Promise<{
     if (localMeta?.deletedAt) {
       if (compareTimestamp(remoteMeta.updatedAt, localMeta.deletedAt) > 0) {
         const remote = await fetchRemoteDaySnapshot(userId, remoteMeta.dateKey);
+        await assertStillOnline();
         if (remote) {
           await saveDayData(remote.day, {
             source: "sync",
@@ -234,6 +271,10 @@ async function pullRemoteChanges(userId: string): Promise<{
           userId,
           remoteMeta.dateKey,
         );
+        await assertRemoteSuccess(
+          success,
+          `Failed to delete day ${remoteMeta.dateKey}`,
+        );
         if (success) pushed += 1;
       }
       continue;
@@ -244,6 +285,7 @@ async function pullRemoteChanges(userId: string): Promise<{
       compareTimestamp(remoteMeta.updatedAt, localMeta.updatedAt) > 0
     ) {
       const remote = await fetchRemoteDaySnapshot(userId, remoteMeta.dateKey);
+      await assertStillOnline();
       if (remote) {
         await saveDayData(remote.day, {
           source: "sync",
@@ -263,6 +305,10 @@ async function pullRemoteChanges(userId: string): Promise<{
       const success = await syncDayToSupabase(userId, localDay, {
         updatedAt: localMeta.updatedAt,
       });
+      await assertRemoteSuccess(
+        success,
+        `Failed to upload day ${remoteMeta.dateKey}`,
+      );
       if (success) pushed += 1;
     }
   }
@@ -293,18 +339,46 @@ async function runSync(userId: string): Promise<SyncRunResult> {
     };
   }
 
-  const queueResult = await processQueue(userId);
-  const pullResult = await pullRemoteChanges(userId);
-  const pending = await getPendingSyncCount(userId);
-  const failed = queueResult.failed;
+  try {
+    const queueResult = await processQueue(userId);
+    if (queueResult.offline) {
+      const pending = await getPendingSyncCount(userId);
+      return {
+        status: "offline",
+        pushed: queueResult.pushed,
+        pulled: queueResult.pulled,
+        failed: 0,
+        pending,
+      };
+    }
 
-  return {
-    status: failed > 0 || pending > 0 ? "failed" : "synced",
-    pushed: queueResult.pushed + pullResult.pushed,
-    pulled: queueResult.pulled + pullResult.pulled,
-    failed,
-    pending,
-  };
+    const pullResult = await pullRemoteChanges(userId);
+    await assertStillOnline();
+
+    const pending = await getPendingSyncCount(userId);
+    const failed = queueResult.failed;
+
+    return {
+      status: failed > 0 || pending > 0 ? "failed" : "synced",
+      pushed: queueResult.pushed + pullResult.pushed,
+      pulled: queueResult.pulled + pullResult.pulled,
+      failed,
+      pending,
+    };
+  } catch (error) {
+    if (await isOfflineSyncError(error)) {
+      const pending = await getPendingSyncCount(userId);
+      return {
+        status: "offline",
+        pushed: 0,
+        pulled: 0,
+        failed: 0,
+        pending,
+      };
+    }
+
+    throw error;
+  }
 }
 
 export async function synchronizeOfflineChanges(

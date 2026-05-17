@@ -47,12 +47,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const triggerSync = useCallback(async () => {
     if (!user?.id || !isConfigured) {
       setStatus(connectivity.isOnline ? "synced" : "offline");
+      setLastError(null);
       await refreshPendingCount();
       return null;
     }
 
     if (!connectivity.isOnline) {
       setStatus("offline");
+      setLastError(null);
       await refreshPendingCount();
       return null;
     }
@@ -68,6 +70,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!connectivity.isOnline) {
       setStatus("offline");
+      setLastError(null);
       void refreshPendingCount();
       return;
     }
