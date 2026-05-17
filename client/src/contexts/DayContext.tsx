@@ -15,7 +15,7 @@ import {
   saveDayDataWithLinkage,
 } from "@/lib/storage";
 import { useAuth } from "@/contexts/AuthContext";
-import { syncDayToSupabase, initializeDayCarryOver } from "@/lib/supabaseSync";
+import { useSyncStatus } from "@/contexts/SyncContext";
 
 interface DayContextType {
   dateKey: string;
@@ -32,56 +32,46 @@ const DayContext = createContext<DayContextType | undefined>(undefined);
 
 export function DayProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { status: syncStatus, triggerSync } = useSyncStatus();
   const [dateKey, setDateKey] = useState(todayKey());
   const [day, setDay] = useState<DayData>(defaultDay(dateKey));
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const syncing = syncStatus === "syncing";
 
   const loadDay = useCallback(async () => {
     setLoading(true);
 
-    let data = await getDayDataWithLinkedValues(dateKey);
-
-    if (user?.id) {
-      try {
-        const { day: cloudData } = await initializeDayCarryOver(
-          user.id,
-          dateKey,
-        );
-        data = cloudData;
-      } catch (error) {
-        console.error("Error fetching from Supabase:", error);
-      }
-    }
+    const data = await getDayDataWithLinkedValues(dateKey);
 
     setDay(data);
     setLoading(false);
-  }, [dateKey, user?.id]);
+  }, [dateKey]);
 
   useEffect(() => {
     loadDay();
   }, [loadDay]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    void triggerSync().then((result) => {
+      if (result && result.pulled > 0) {
+        void loadDay();
+      }
+    });
+  }, [loadDay, triggerSync, user?.id]);
+
   const saveDay = useCallback(async () => {
     const dayToSave = { ...day, dateKey };
 
-    const affectedDays = await saveDayDataWithLinkage(dayToSave, {
+    await saveDayDataWithLinkage(dayToSave, {
       source: "user",
     });
 
     if (user?.id) {
-      setSyncing(true);
-      try {
-        for (const affectedDay of affectedDays) {
-          await syncDayToSupabase(user.id, affectedDay);
-        }
-      } catch (error) {
-        console.error("Error syncing to Supabase:", error);
-      } finally {
-        setSyncing(false);
-      }
+      void triggerSync();
     }
-  }, [day, dateKey, user?.id]);
+  }, [day, dateKey, triggerSync, user?.id]);
 
   const resetDay = useCallback(() => {
     setDay(defaultDay(dateKey));

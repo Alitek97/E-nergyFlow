@@ -1,5 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { parseOperatingTime } from "@/utils/operatingTime";
+import {
+  getActiveLocalUserId,
+  getAllSql,
+  getFirstSql,
+  getMetadata,
+  runSql,
+  setMetadata,
+} from "@/lib/localDb";
+import { enqueueSyncRecord } from "@/lib/syncQueue";
 
 export {
   formatNumber,
@@ -94,6 +103,7 @@ export interface DayData {
   dateKey: string;
   feeders: Record<string, FeederData>;
   turbines: Record<string, TurbineData>;
+  updatedAt?: string;
 }
 
 export type ReadingSyncSource = "user" | "sync";
@@ -105,6 +115,7 @@ export interface SaveDayOptions {
 export interface UserSettings {
   displayName: string;
   decimalPrecision: number;
+  updatedAt?: string;
 }
 
 const SETTINGS_KEY = "@power_plant_settings";
@@ -119,6 +130,58 @@ export function defaultDay(dateKey: string): DayData {
       TURBINES.map((t) => [t, { previous: "", present: "", hours: "24" }]),
     ),
   };
+}
+
+interface LocalDayRow {
+  date_key: string;
+  remote_id: string | null;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+interface LocalFeederRow {
+  feeder_name: string;
+  start_reading: string | null;
+  end_reading: string | null;
+}
+
+interface LocalTurbineRow {
+  turbine_name: string;
+  previous_reading: string | null;
+  present_reading: string | null;
+  hours: string | null;
+}
+
+export interface LocalDayMeta {
+  dateKey: string;
+  remoteId: string | null;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+interface SaveDayDataOptions extends SaveDayOptions {
+  updatedAt?: string;
+  remoteId?: string | null;
+}
+
+interface DeleteDayOptions extends SaveDayOptions {
+  updatedAt?: string;
+  remoteId?: string | null;
+}
+
+const LEGACY_MIGRATION_TIMESTAMP = "1970-01-01T00:00:00.000Z";
+let isMigratingLegacyData = false;
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function activeUserId(): string {
+  return getActiveLocalUserId();
+}
+
+function legacyMigratedKey(userId: string): string {
+  return `legacy-storage-migrated:${userId}`;
 }
 
 export function stripCommas(value: string): string {
@@ -205,39 +268,172 @@ export function getPreviousDateKey(dateKey: string): string {
   return addDays(dateKey, -1);
 }
 
+async function queueDaySync(
+  day: DayData,
+  action: "create" | "update" | "delete",
+  updatedAt: string,
+): Promise<void> {
+  await enqueueSyncRecord({
+    userId: activeUserId(),
+    table: "daily_data",
+    entityId: day.dateKey,
+    action,
+    createdAt: updatedAt,
+    payload: {
+      dateKey: day.dateKey,
+      day,
+      updatedAt,
+    },
+  });
+}
+
+async function ensureLegacyDataMigrated(): Promise<void> {
+  if (isMigratingLegacyData) return;
+  const userId = activeUserId();
+  const metadataKey = legacyMigratedKey(userId);
+  const migrated = await getMetadata(metadataKey);
+  if (migrated === "true") return;
+
+  try {
+    isMigratingLegacyData = true;
+    const rawIndex = await AsyncStorage.getItem(listKey());
+    const legacyIndex = rawIndex ? JSON.parse(rawIndex) : [];
+
+    if (Array.isArray(legacyIndex)) {
+      for (const dateKey of legacyIndex) {
+        if (typeof dateKey !== "string") continue;
+        const rawDay = await AsyncStorage.getItem(storageKey(dateKey));
+        if (!rawDay) continue;
+
+        const parsed = JSON.parse(rawDay) as DayData;
+        const day = normalizeDayData({ ...parsed, dateKey });
+        await saveDayData(day, {
+          source: "user",
+          updatedAt: LEGACY_MIGRATION_TIMESTAMP,
+        });
+      }
+    }
+
+    const rawSettings = await AsyncStorage.getItem(SETTINGS_KEY);
+    if (rawSettings) {
+      const parsedSettings = JSON.parse(rawSettings) as Partial<UserSettings>;
+      await saveSettings(parsedSettings, {
+        source: "user",
+        updatedAt: LEGACY_MIGRATION_TIMESTAMP,
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to migrate legacy local storage:", error);
+  } finally {
+    isMigratingLegacyData = false;
+    await setMetadata(metadataKey, "true");
+  }
+}
+
 export async function getDayIndex(): Promise<string[]> {
   try {
-    const raw = await AsyncStorage.getItem(listKey());
-    return raw ? JSON.parse(raw) : [];
+    await ensureLegacyDataMigrated();
+    const rows = await getAllSql<{ date_key: string }>(
+      `SELECT date_key
+       FROM local_days
+       WHERE user_id = ?
+         AND deleted_at IS NULL
+       ORDER BY date_key ASC`,
+      [activeUserId()],
+    );
+    return rows.map((row) => row.date_key);
   } catch {
     return [];
   }
 }
 
-async function upsertDayIndex(dateKey: string): Promise<void> {
-  try {
-    const arr = await getDayIndex();
-    if (!arr.includes(dateKey)) {
-      arr.push(dateKey);
-      arr.sort();
-      await AsyncStorage.setItem(listKey(), JSON.stringify(arr));
-    }
-  } catch (error) {
-    console.error("Error updating day index:", error);
-  }
-}
-
 export async function getDayData(dateKey: string): Promise<DayData> {
   try {
-    const raw = await AsyncStorage.getItem(storageKey(dateKey));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return { ...defaultDay(dateKey), ...parsed };
+    await ensureLegacyDataMigrated();
+    const userId = activeUserId();
+    const dayRow = await getFirstSql<LocalDayRow>(
+      `SELECT date_key, remote_id, updated_at, deleted_at
+       FROM local_days
+       WHERE user_id = ?
+         AND date_key = ?
+       LIMIT 1`,
+      [userId, dateKey],
+    );
+
+    if (!dayRow || dayRow.deleted_at) {
+      return defaultDay(dateKey);
     }
-    return defaultDay(dateKey);
+
+    const [feedersRows, turbinesRows] = await Promise.all([
+      getAllSql<LocalFeederRow>(
+        `SELECT feeder_name, start_reading, end_reading
+         FROM local_feeders
+         WHERE user_id = ?
+           AND date_key = ?
+           AND deleted_at IS NULL`,
+        [userId, dateKey],
+      ),
+      getAllSql<LocalTurbineRow>(
+        `SELECT turbine_name, previous_reading, present_reading, hours
+         FROM local_turbines
+         WHERE user_id = ?
+           AND date_key = ?
+           AND deleted_at IS NULL`,
+        [userId, dateKey],
+      ),
+    ]);
+
+    const day = defaultDay(dateKey);
+    day.updatedAt = dayRow.updated_at;
+
+    for (const row of feedersRows) {
+      if (!FEEDERS.includes(row.feeder_name as (typeof FEEDERS)[number])) {
+        continue;
+      }
+      day.feeders[row.feeder_name] = {
+        start: row.start_reading ?? "",
+        end: row.end_reading ?? "",
+      };
+    }
+
+    for (const row of turbinesRows) {
+      if (!TURBINES.includes(row.turbine_name as (typeof TURBINES)[number])) {
+        continue;
+      }
+      day.turbines[row.turbine_name] = {
+        previous: row.previous_reading ?? "",
+        present: row.present_reading ?? "",
+        hours: row.hours ?? "24",
+      };
+    }
+
+    return day;
   } catch {
     return defaultDay(dateKey);
   }
+}
+
+export async function getLocalDayMeta(
+  dateKey: string,
+): Promise<LocalDayMeta | null> {
+  await ensureLegacyDataMigrated();
+  const row = await getFirstSql<LocalDayRow>(
+    `SELECT date_key, remote_id, updated_at, deleted_at
+     FROM local_days
+     WHERE user_id = ?
+       AND date_key = ?
+     LIMIT 1`,
+    [activeUserId(), dateKey],
+  );
+
+  if (!row) return null;
+
+  return {
+    dateKey: row.date_key,
+    remoteId: row.remote_id,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+  };
 }
 
 export async function getDayDataWithLinkedValues(
@@ -249,10 +445,7 @@ export async function getDayDataWithLinkedValues(
   if (!prevDateKey) return currentDay;
 
   try {
-    const prevRaw = await AsyncStorage.getItem(storageKey(prevDateKey));
-    if (!prevRaw) return currentDay;
-
-    const prevDay = JSON.parse(prevRaw) as DayData;
+    const prevDay = await getDayData(prevDateKey);
     let wasUpdated = false;
 
     const linkedFeeders = { ...currentDay.feeders };
@@ -296,11 +489,7 @@ export async function getDayDataWithLinkedValues(
     };
 
     if (wasUpdated) {
-      await AsyncStorage.setItem(
-        storageKey(dateKey),
-        JSON.stringify(linkedDay),
-      );
-      await upsertDayIndex(dateKey);
+      await saveDayData(linkedDay, { source: "user" });
     }
 
     return linkedDay;
@@ -309,10 +498,99 @@ export async function getDayDataWithLinkedValues(
   }
 }
 
-export async function saveDayData(day: DayData): Promise<void> {
+export async function saveDayData(
+  day: DayData,
+  options: SaveDayDataOptions = {},
+): Promise<void> {
   try {
-    await AsyncStorage.setItem(storageKey(day.dateKey), JSON.stringify(day));
-    await upsertDayIndex(day.dateKey);
+    if (!isMigratingLegacyData) {
+      await ensureLegacyDataMigrated();
+    }
+
+    const userId = activeUserId();
+    const updatedAt = options.updatedAt ?? day.updatedAt ?? nowIso();
+    const normalized = normalizeDayData({ ...day, updatedAt });
+
+    await runSql(
+      `INSERT INTO local_days (
+         user_id,
+         date_key,
+         remote_id,
+         updated_at,
+         deleted_at
+       )
+       VALUES (?, ?, ?, ?, NULL)
+       ON CONFLICT(user_id, date_key) DO UPDATE SET
+         remote_id = COALESCE(excluded.remote_id, local_days.remote_id),
+         updated_at = excluded.updated_at,
+         deleted_at = NULL`,
+      [userId, normalized.dateKey, options.remoteId ?? null, updatedAt],
+    );
+
+    for (const feeder of FEEDERS) {
+      const current = normalized.feeders[feeder];
+      await runSql(
+        `INSERT INTO local_feeders (
+           user_id,
+           date_key,
+           feeder_name,
+           start_reading,
+           end_reading,
+           updated_at,
+           deleted_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(user_id, date_key, feeder_name) DO UPDATE SET
+           start_reading = excluded.start_reading,
+           end_reading = excluded.end_reading,
+           updated_at = excluded.updated_at,
+           deleted_at = NULL`,
+        [
+          userId,
+          normalized.dateKey,
+          feeder,
+          current.start,
+          current.end,
+          updatedAt,
+        ],
+      );
+    }
+
+    for (const turbine of TURBINES) {
+      const current = normalized.turbines[turbine];
+      await runSql(
+        `INSERT INTO local_turbines (
+           user_id,
+           date_key,
+           turbine_name,
+           previous_reading,
+           present_reading,
+           hours,
+           updated_at,
+           deleted_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(user_id, date_key, turbine_name) DO UPDATE SET
+           previous_reading = excluded.previous_reading,
+           present_reading = excluded.present_reading,
+           hours = excluded.hours,
+           updated_at = excluded.updated_at,
+           deleted_at = NULL`,
+        [
+          userId,
+          normalized.dateKey,
+          turbine,
+          current.previous,
+          current.present,
+          current.hours,
+          updatedAt,
+        ],
+      );
+    }
+
+    if (options.source === "user") {
+      await queueDaySync(normalized, "update", updatedAt);
+    }
   } catch (error) {
     console.error("Error saving day data:", error);
     throw error;
@@ -321,6 +599,7 @@ export async function saveDayData(day: DayData): Promise<void> {
 
 function normalizeDayData(input: DayData): DayData {
   const normalized = defaultDay(input.dateKey);
+  normalized.updatedAt = input.updatedAt;
   for (const feeder of FEEDERS) {
     const current = input.feeders?.[feeder] ?? { start: "", end: "" };
     normalized.feeders[feeder] = {
@@ -357,12 +636,14 @@ async function getOrCreateDay(
 
 async function saveDaysBatch(
   daysByDate: Map<string, DayData>,
+  options: SaveDayDataOptions = {},
 ): Promise<DayData[]> {
   const days = Array.from(daysByDate.values());
+  const updatedAt = options.updatedAt ?? nowIso();
   for (const day of days) {
-    await saveDayData(day);
+    await saveDayData({ ...day, updatedAt }, { ...options, updatedAt });
   }
-  return days;
+  return days.map((day) => ({ ...day, updatedAt }));
 }
 
 export async function saveDayDataWithLinkage(
@@ -411,7 +692,10 @@ export async function saveDayDataWithLinkage(
     }
   }
 
-  return saveDaysBatch(daysByDate);
+  return saveDaysBatch(daysByDate, {
+    source,
+    updatedAt: nowIso(),
+  });
 }
 
 export type MeterPatch = Partial<FeederData> | Partial<TurbineData>;
@@ -443,12 +727,59 @@ export async function upsertDailyReading(
   return saveDayDataWithLinkage(baseDay, options);
 }
 
-export async function deleteDayData(dateKey: string): Promise<void> {
+export async function deleteDayData(
+  dateKey: string,
+  options: DeleteDayOptions = { source: "user" },
+): Promise<void> {
   try {
-    await AsyncStorage.removeItem(storageKey(dateKey));
-    const arr = await getDayIndex();
-    const newArr = arr.filter((d) => d !== dateKey);
-    await AsyncStorage.setItem(listKey(), JSON.stringify(newArr));
+    await ensureLegacyDataMigrated();
+    const userId = activeUserId();
+    const updatedAt = options.updatedAt ?? nowIso();
+
+    await runSql(
+      `INSERT INTO local_days (
+         user_id,
+         date_key,
+         remote_id,
+         updated_at,
+         deleted_at
+       )
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, date_key) DO UPDATE SET
+         remote_id = COALESCE(excluded.remote_id, local_days.remote_id),
+         updated_at = excluded.updated_at,
+         deleted_at = excluded.deleted_at`,
+      [userId, dateKey, options.remoteId ?? null, updatedAt, updatedAt],
+    );
+    await runSql(
+      `UPDATE local_feeders
+       SET deleted_at = ?, updated_at = ?
+       WHERE user_id = ?
+         AND date_key = ?`,
+      [updatedAt, updatedAt, userId, dateKey],
+    );
+    await runSql(
+      `UPDATE local_turbines
+       SET deleted_at = ?, updated_at = ?
+       WHERE user_id = ?
+         AND date_key = ?`,
+      [updatedAt, updatedAt, userId, dateKey],
+    );
+
+    if (options.source === "user") {
+      await enqueueSyncRecord({
+        userId,
+        table: "daily_data",
+        entityId: dateKey,
+        action: "delete",
+        createdAt: updatedAt,
+        payload: {
+          dateKey,
+          updatedAt,
+          remoteId: options.remoteId ?? null,
+        },
+      });
+    }
   } catch (error) {
     console.error("Error deleting day data:", error);
     throw error;
@@ -471,24 +802,90 @@ export async function getAllDaysData(): Promise<DayData[]> {
 
 export async function getSettings(): Promise<UserSettings> {
   try {
-    const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+    await ensureLegacyDataMigrated();
     const defaults: UserSettings = {
       displayName: "Engineer",
       decimalPrecision: 2,
     };
-    return raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
+    const row = await getFirstSql<{
+      display_name: string;
+      decimal_precision: number;
+      updated_at: string;
+    }>(
+      `SELECT display_name, decimal_precision, updated_at
+       FROM local_settings
+       WHERE user_id = ?
+       LIMIT 1`,
+      [activeUserId()],
+    );
+
+    return row
+      ? {
+          displayName: row.display_name,
+          decimalPrecision: row.decimal_precision,
+          updatedAt: row.updated_at,
+        }
+      : defaults;
   } catch {
     return { displayName: "Engineer", decimalPrecision: 2 };
   }
 }
 
+interface SaveSettingsOptions extends SaveDayOptions {
+  updatedAt?: string;
+}
+
 export async function saveSettings(
   settings: Partial<UserSettings>,
+  options: SaveSettingsOptions = {},
 ): Promise<UserSettings> {
   try {
+    if (!isMigratingLegacyData) {
+      await ensureLegacyDataMigrated();
+    }
+
     const current = await getSettings();
-    const updated = { ...current, ...settings };
-    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    const updatedAt = options.updatedAt ?? settings.updatedAt ?? nowIso();
+    const updated: UserSettings = {
+      ...current,
+      ...settings,
+      updatedAt,
+    };
+
+    await runSql(
+      `INSERT INTO local_settings (
+         user_id,
+         display_name,
+         decimal_precision,
+         updated_at
+       )
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         decimal_precision = excluded.decimal_precision,
+         updated_at = excluded.updated_at`,
+      [
+        activeUserId(),
+        updated.displayName,
+        updated.decimalPrecision,
+        updatedAt,
+      ],
+    );
+
+    if (options.source === "user") {
+      await enqueueSyncRecord({
+        userId: activeUserId(),
+        table: "settings",
+        entityId: "profile",
+        action: "update",
+        createdAt: updatedAt,
+        payload: {
+          settings: updated,
+          updatedAt,
+        },
+      });
+    }
+
     return updated;
   } catch (error) {
     console.error("Error saving settings:", error);
@@ -606,11 +1003,11 @@ export async function importData(jsonString: string): Promise<boolean> {
     const data = JSON.parse(jsonString);
     if (data.days && Array.isArray(data.days)) {
       for (const day of data.days) {
-        await saveDayData(day);
+        await saveDayData(day, { source: "user" });
       }
     }
     if (data.settings) {
-      await saveSettings(data.settings);
+      await saveSettings(data.settings, { source: "user" });
     }
     return true;
   } catch {

@@ -15,11 +15,14 @@ import {
 export async function syncDayToSupabase(
   userId: string,
   day: DayData,
+  options: { updatedAt?: string } = {},
 ): Promise<boolean> {
   try {
+    const updatedAt =
+      options.updatedAt ?? day.updatedAt ?? new Date().toISOString();
     const { data: existingDay, error: fetchError } = await supabase
       .from("daily_data")
-      .select("id")
+      .select("id, updated_at")
       .eq("user_id", userId)
       .eq("date_key", day.dateKey)
       .single();
@@ -29,7 +32,11 @@ export async function syncDayToSupabase(
     if (fetchError && fetchError.code === "PGRST116") {
       const { data: newDay, error: insertError } = await supabase
         .from("daily_data")
-        .insert({ user_id: userId, date_key: day.dateKey })
+        .insert({
+          user_id: userId,
+          date_key: day.dateKey,
+          updated_at: updatedAt,
+        })
         .select("id")
         .single();
 
@@ -43,7 +50,18 @@ export async function syncDayToSupabase(
       return false;
     } else {
       dailyDataId = existingDay.id;
+      const { error: updateDayError } = await supabase
+        .from("daily_data")
+        .update({ updated_at: updatedAt })
+        .eq("id", dailyDataId);
+
+      if (updateDayError) {
+        console.error("Error touching daily_data:", updateDayError);
+        return false;
+      }
     }
+
+    let hadRowError = false;
 
     for (const feederName of FEEDERS) {
       const feeder = day.feeders[feederName] || { start: "", end: "" };
@@ -57,12 +75,14 @@ export async function syncDayToSupabase(
           feeder_name: feederName,
           start_reading: startReading,
           end_reading: endReading,
+          updated_at: updatedAt,
         },
         { onConflict: "daily_data_id,feeder_name" },
       );
 
       if (error) {
         console.error(`Error upserting feeder ${feederName}:`, error);
+        hadRowError = true;
       }
     }
 
@@ -87,16 +107,18 @@ export async function syncDayToSupabase(
           previous_reading: previousReading,
           present_reading: presentReading,
           hours: turbine.hours,
+          updated_at: updatedAt,
         },
         { onConflict: "daily_data_id,turbine_name" },
       );
 
       if (error) {
         console.error(`Error upserting turbine ${turbineName}:`, error);
+        hadRowError = true;
       }
     }
 
-    return true;
+    return !hadRowError;
   } catch (error) {
     console.error("Error syncing day to Supabase:", error);
     return false;
@@ -110,7 +132,7 @@ export async function fetchDayFromSupabase(
   try {
     const { data: dailyData, error: dayError } = await supabase
       .from("daily_data")
-      .select("id")
+      .select("id, updated_at")
       .eq("user_id", userId)
       .eq("date_key", dateKey)
       .single();
@@ -164,11 +186,105 @@ export async function fetchDayFromSupabase(
       dateKey,
       feeders,
       turbines,
+      updatedAt: dailyData.updated_at,
     };
   } catch (error) {
     console.error("Error fetching day from Supabase:", error);
     return null;
   }
+}
+
+export interface RemoteDayMeta {
+  remoteId: string;
+  dateKey: string;
+  updatedAt: string;
+}
+
+export interface RemoteDaySnapshot extends RemoteDayMeta {
+  day: DayData;
+}
+
+export async function fetchRemoteDayMeta(
+  userId: string,
+  dateKey: string,
+): Promise<RemoteDayMeta | null> {
+  try {
+    const { data, error } = await supabase
+      .from("daily_data")
+      .select("id, date_key, updated_at")
+      .eq("user_id", userId)
+      .eq("date_key", dateKey)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") return null;
+      throw error;
+    }
+
+    return {
+      remoteId: data.id,
+      dateKey: data.date_key,
+      updatedAt: data.updated_at,
+    };
+  } catch (error) {
+    console.error("Error fetching remote day metadata:", error);
+    return null;
+  }
+}
+
+export async function fetchRemoteDaySnapshot(
+  userId: string,
+  dateKey: string,
+): Promise<RemoteDaySnapshot | null> {
+  const [meta, day] = await Promise.all([
+    fetchRemoteDayMeta(userId, dateKey),
+    fetchDayFromSupabase(userId, dateKey),
+  ]);
+
+  if (!meta || !day) return null;
+
+  return {
+    ...meta,
+    day: {
+      ...day,
+      updatedAt: meta.updatedAt,
+    },
+  };
+}
+
+export async function fetchAllRemoteDayMeta(
+  userId: string,
+): Promise<RemoteDayMeta[]> {
+  try {
+    const { data, error } = await supabase
+      .from("daily_data")
+      .select("id, date_key, updated_at")
+      .eq("user_id", userId)
+      .order("date_key", { ascending: true });
+
+    if (error || !data) {
+      if (error) console.error("Error fetching remote day metadata:", error);
+      return [];
+    }
+
+    return data.map((row) => ({
+      remoteId: row.id,
+      dateKey: row.date_key,
+      updatedAt: row.updated_at,
+    }));
+  } catch (error) {
+    console.error("Error fetching all remote day metadata:", error);
+    return [];
+  }
+}
+
+export async function deleteDayFromSupabaseByDateKey(
+  userId: string,
+  dateKey: string,
+): Promise<boolean> {
+  const meta = await fetchRemoteDayMeta(userId, dateKey);
+  if (!meta) return true;
+  return deleteDayFromSupabase(meta.remoteId);
 }
 
 export async function fetchAllDaysFromSupabase(
@@ -199,7 +315,7 @@ export async function fetchUserProfile(
   try {
     const { data, error } = await supabase
       .from("profiles")
-      .select("display_name, decimal_precision")
+      .select("display_name, decimal_precision, updated_at")
       .eq("id", userId)
       .single();
 
@@ -211,6 +327,7 @@ export async function fetchUserProfile(
     return {
       displayName: data.display_name || "Engineer",
       decimalPrecision: data.decimal_precision || 2,
+      updatedAt: data.updated_at,
     };
   } catch (error) {
     console.error("Error fetching user profile:", error);
@@ -230,6 +347,7 @@ export async function updateUserProfile(
     if (settings.decimalPrecision !== undefined) {
       updates.decimal_precision = settings.decimalPrecision;
     }
+    updates.updated_at = settings.updatedAt ?? new Date().toISOString();
 
     const { error } = await supabase
       .from("profiles")

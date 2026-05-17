@@ -16,18 +16,22 @@ import { NumberText } from "./NumberText";
 import { useTheme } from "@/hooks/useTheme";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSyncStatus } from "@/contexts/SyncContext";
 import { BorderRadius, Spacing, withAlpha } from "@/constants/theme";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getFlowLabelAndStyle } from "@/lib/flowLabel";
-import {
-  DaySummary,
-  fetchMonthDaysFromSupabase,
-  deleteDayFromSupabase,
-} from "@/lib/supabaseSync";
 import { showSuccess, showError } from "@/utils/notify";
-import { deleteDayData } from "@/lib/storage";
+import { deleteDayData, getAllDaysData } from "@/lib/storage";
+import { computeDayStats } from "@/shared/lib/dayCalculations";
 import { formatEnergy } from "@/utils/units";
+
+interface DaySummary {
+  id: string;
+  dateKey: string;
+  production: number;
+  exportVal: number;
+  consumption: number;
+}
 
 interface MonthDaysModalProps {
   visible: boolean;
@@ -47,7 +51,7 @@ export function MonthDaysModal({
   const { t, isRTL } = useLanguage();
   const layout = useResponsiveLayout();
   const { unitsConfig } = useUnits();
-  const { user } = useAuth();
+  const { triggerSync } = useSyncStatus();
 
   const [days, setDays] = useState<DaySummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,23 +59,35 @@ export function MonthDaysModal({
   const deleteLockRef = useRef(false);
 
   const loadDays = useCallback(async () => {
-    if (!user) return;
     setLoading(true);
     try {
-      const data = await fetchMonthDaysFromSupabase(user.id, monthKey);
+      const localDays = await getAllDaysData();
+      const data = localDays
+        .filter((day) => day.dateKey.startsWith(monthKey))
+        .map((day) => {
+          const stats = computeDayStats(day);
+          return {
+            id: day.dateKey,
+            dateKey: day.dateKey,
+            production: stats.production,
+            exportVal: stats.exportVal,
+            consumption: stats.consumption,
+          };
+        })
+        .sort((a, b) => b.dateKey.localeCompare(a.dateKey));
       setDays(data);
     } catch (error) {
       console.error("Error loading days:", error);
     } finally {
       setLoading(false);
     }
-  }, [monthKey, user]);
+  }, [monthKey]);
 
   useEffect(() => {
-    if (visible && user) {
+    if (visible) {
       loadDays();
     }
-  }, [loadDays, user, visible]);
+  }, [loadDays, visible]);
 
   const handleDelete = (day: DaySummary) => {
     if (deleteLockRef.current || deletingId) return;
@@ -99,17 +115,12 @@ export function MonthDaysModal({
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const success = await deleteDayFromSupabase(day.id);
+      await deleteDayData(day.dateKey, { source: "user" });
+      void triggerSync();
 
-      if (success) {
-        await deleteDayData(day.dateKey);
-
-        setDays((prev) => prev.filter((d) => d.id !== day.id));
-        showSuccess(t("day_deleted"));
-        onDayDeleted();
-      } else {
-        showError(t("delete_failed"));
-      }
+      setDays((prev) => prev.filter((d) => d.id !== day.id));
+      showSuccess(t("day_deleted"));
+      onDayDeleted();
     } catch (error) {
       console.error("Error deleting day:", error);
       showError(t("delete_failed"));

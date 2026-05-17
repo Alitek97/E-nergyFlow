@@ -18,7 +18,6 @@ import { NumberText } from "@/components/NumberText";
 import { ValueWithUnit } from "@/components/ValueWithUnit";
 import { DashboardBackdrop } from "@/components/visual/DashboardBackdrop";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
@@ -31,7 +30,6 @@ import type { ReportsStackParamList } from "@/navigation/ReportsStackNavigator";
 import { getAllDaysData } from "@/lib/storage";
 import { getFlowLabelAndStyle } from "@/lib/flowLabel";
 import { computeDayStats } from "@/shared/lib/dayCalculations";
-import { fetchAllMonthsFromSupabase } from "@/lib/supabaseSync";
 import {
   groupReadingsByMonth,
   type MonthGroupedReadings,
@@ -63,31 +61,12 @@ export default function MonthsScreen() {
   const { rtlRow } = useRTL();
   const layout = useResponsiveLayout();
   const columnCount = layout.isWideLayout ? 2 : 1;
-  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [months, setMonths] = useState<MonthGroupedReadings[]>([]);
   const loadMonths = useCallback(async () => {
     setLoading(true);
     try {
-      if (user?.id) {
-        const remoteMonths = await fetchAllMonthsFromSupabase(user.id);
-        const mapped: MonthGroupedReadings[] = remoteMonths.map((m) => {
-          const [yearRaw, monthRaw] = m.month.split("-");
-          return {
-            key: m.month,
-            year: Number(yearRaw),
-            month: Number(monthRaw),
-            countDays: m.days,
-            totalProduction: m.totalProduction,
-            totalExport: m.totalExport,
-            totalConsumption: m.totalConsumption,
-          };
-        });
-        setMonths(mapped);
-        return;
-      }
-
       const localDays = await getAllDaysData();
       const readingSummaries: ReadingSummary[] = localDays.map((day) => {
         const stats = computeDayStats(day);
@@ -105,7 +84,7 @@ export default function MonthsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, []);
 
   useEffect(() => {
     loadMonths();

@@ -23,10 +23,12 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DayProvider } from "@/contexts/DayContext";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { SyncProvider } from "@/contexts/SyncContext";
 import { ThemeProvider, useThemeMode } from "@/contexts/ThemeContext";
 import { UnitsProvider } from "@/contexts/UnitsContext";
 import { ScadaEffectsProvider } from "@/contexts/ScadaEffectsContext";
 import { AuthScreen } from "@/screens/AuthScreen";
+import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 import { getFontFamilyForText, typography } from "@/theme/typography";
 import { loadFonts } from "@/theme/fonts";
 
@@ -83,6 +85,7 @@ function AuthenticatedApp() {
               <RootStackNavigator />
             </NavigationContainer>
             <StatusBar style={isDark ? "light" : "dark"} />
+            <SyncStatusIndicator />
           </KeyboardProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>
@@ -162,7 +165,9 @@ export default function App() {
               <UnitsProvider>
                 <ScadaEffectsProvider>
                   <AuthProvider>
-                    <AppContent />
+                    <SyncProvider>
+                      <AppContent />
+                    </SyncProvider>
                   </AuthProvider>
                 </ScadaEffectsProvider>
               </UnitsProvider>

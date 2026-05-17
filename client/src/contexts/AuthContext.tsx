@@ -15,6 +15,8 @@ import {
   storeGuestUserId,
 } from "@/lib/guestAuth";
 import { ensureProfile, UserProfile } from "@/lib/profile";
+import { getCurrentConnectivity } from "@/lib/connectivity";
+import { setActiveLocalUserId } from "@/lib/localDb";
 
 interface AuthContextType {
   user: User | null;
@@ -100,6 +102,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     setProfileLoading(true);
     try {
+      const connectivity = await getCurrentConnectivity();
+      if (!connectivity.isOnline) return;
+
       const loadedProfile = await ensureProfile(user.id);
       setProfile(loadedProfile);
     } catch (error) {
@@ -114,6 +119,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // If Supabase is not configured, skip auth initialization
       // App will work in offline/local-only mode
       if (!isSupabaseConfigured) {
+        setActiveLocalUserId(null);
         setAuthError("Cloud sync unavailable - running in offline mode");
         setLoading(false);
         return;
@@ -125,6 +131,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } = await supabase.auth.getSession();
 
         if (existingSession) {
+          setActiveLocalUserId(existingSession.user.id);
           setSession(existingSession);
           setUser(existingSession.user);
 
@@ -146,6 +153,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const {
           data: { session: newSession },
         } = await supabase.auth.getSession();
+        setActiveLocalUserId(newSession?.user?.id);
         setSession(newSession);
         setUser(newSession?.user ?? null);
       } catch (error) {
@@ -161,6 +169,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setActiveLocalUserId(session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       setProfile(null);

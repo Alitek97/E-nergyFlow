@@ -37,6 +37,7 @@ import {
 import { useScadaEffects } from "@/hooks/useScadaEffects";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { useDay } from "@/contexts/DayContext";
+import { useSyncStatus } from "@/contexts/SyncContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
@@ -44,13 +45,6 @@ import { getFlowLabelAndStyle } from "@/lib/flowLabel";
 import { DayData, getAllDaysData, exportAllData } from "@/lib/storage";
 import { generateExcelReport, generateTextReport } from "@/lib/excelExport";
 import { computeDayStats } from "@/shared/lib/dayCalculations";
-import {
-  MonthSummary,
-  MonthListItem,
-  fetchMonthsListFromSupabase,
-  fetchSingleMonthFromSupabase,
-  fetchRecentDaysFullFromSupabase,
-} from "@/lib/supabaseSync";
 import type { ReportsStackParamList } from "@/navigation/ReportsStackNavigator";
 import { formatEnergy } from "@/utils/units";
 
@@ -58,6 +52,20 @@ type ReportsNavigation = NativeStackNavigationProp<
   ReportsStackParamList,
   "Reports"
 >;
+
+interface MonthSummary {
+  month: string;
+  days: number;
+  totalProduction: number;
+  totalExport: number;
+  totalConsumption: number;
+}
+
+interface MonthListItem {
+  month: string;
+  days: number;
+}
+
 type ReportsScreenCache = {
   allDays: DayData[];
   currentMonth: string;
@@ -106,6 +114,7 @@ export default function ReportsScreen() {
   const flowOpacity = SCADA_VISUAL_VERIFY && scadaEffectsEnabled ? 0.18 : 0.08;
   const gridOpacity = SCADA_VISUAL_VERIFY && scadaEffectsEnabled ? 0.1 : 0.04;
   const { user } = useAuth();
+  const { triggerSync } = useSyncStatus();
   const navigation = useNavigation<ReportsNavigation>();
 
   const currentMonth = useMemo(() => {
@@ -151,75 +160,52 @@ export default function ReportsScreen() {
         setLoading(true);
       }
       try {
-        let resolvedAllDays: DayData[] = [];
-        let resolvedCurrentMonthStats: MonthSummary | null = null;
-        let resolvedPreviousMonthsList: MonthListItem[] = [];
+        if (showRefreshFeedback) {
+          await triggerSync();
+        }
 
-        if (user?.id) {
-          const [recentDays, monthsList] = await Promise.all([
-            fetchRecentDaysFullFromSupabase(user.id, 7),
-            fetchMonthsListFromSupabase(user.id),
-          ]);
-          resolvedAllDays = recentDays;
+        const localDays = await getAllDaysData();
+        const resolvedAllDays = localDays
+          .slice()
+          .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+          .slice(-7);
 
-          const currentMonthItem = monthsList.find(
-            (m) => m.month === currentMonth,
-          );
-          resolvedPreviousMonthsList = monthsList.filter(
-            (m) => m.month !== currentMonth,
-          );
+        const monthMap = new Map<
+          string,
+          { days: number; production: number; exportVal: number }
+        >();
+        for (const d of localDays) {
+          const month = d.dateKey.substring(0, 7);
+          const stats = computeDayStats(d);
+          const existing = monthMap.get(month) || {
+            days: 0,
+            production: 0,
+            exportVal: 0,
+          };
+          existing.days++;
+          existing.production += stats.production;
+          existing.exportVal += stats.exportVal;
+          monthMap.set(month, existing);
+        }
 
-          if (currentMonthItem) {
-            resolvedCurrentMonthStats = await fetchSingleMonthFromSupabase(
-              user.id,
-              currentMonth,
-            );
-          }
-        } else {
-          const localDays = await getAllDaysData();
-          resolvedAllDays = localDays;
+        const allLocalMonths: MonthSummary[] = Array.from(monthMap.entries())
+          .map(([month, data]) => ({
+            month,
+            days: data.days,
+            totalProduction: data.production,
+            totalExport: data.exportVal,
+            totalConsumption: data.production - data.exportVal,
+          }))
+          .sort((a, b) => b.month.localeCompare(a.month));
 
-          const monthMap = new Map<
-            string,
-            { days: number; production: number; exportVal: number }
-          >();
-          for (const d of localDays) {
-            const month = d.dateKey.substring(0, 7);
-            const stats = computeDayStats(d);
-            const existing = monthMap.get(month) || {
-              days: 0,
-              production: 0,
-              exportVal: 0,
-            };
-            existing.days++;
-            existing.production += stats.production;
-            existing.exportVal += stats.exportVal;
-            monthMap.set(month, existing);
-          }
-
-          const allLocalMonths: MonthSummary[] = Array.from(monthMap.entries())
-            .map(([month, data]) => ({
-              month,
-              days: data.days,
-              totalProduction: data.production,
-              totalExport: data.exportVal,
-              totalConsumption: data.production - data.exportVal,
-            }))
-            .sort((a, b) => b.month.localeCompare(a.month));
-
-          const currentMonthLocal = allLocalMonths.find(
-            (m) => m.month === currentMonth,
-          );
-          const previousMonthsLocal = allLocalMonths.filter(
-            (m) => m.month !== currentMonth,
-          );
-
-          resolvedCurrentMonthStats = currentMonthLocal || null;
-          resolvedPreviousMonthsList = previousMonthsLocal.map((m) => ({
+        const resolvedCurrentMonthStats =
+          allLocalMonths.find((m) => m.month === currentMonth) || null;
+        const resolvedPreviousMonthsList = allLocalMonths
+          .filter((m) => m.month !== currentMonth)
+          .map((m) => ({
             month: m.month,
             days: m.days,
           }));
-        }
 
         setAllDays(resolvedAllDays);
         setCurrentMonthStats(resolvedCurrentMonthStats);
@@ -242,7 +228,7 @@ export default function ReportsScreen() {
         setRefreshing(false);
       }
     },
-    [t, user?.id, currentMonth],
+    [currentMonth, t, triggerSync, user?.id],
   );
 
   useFocusEffect(

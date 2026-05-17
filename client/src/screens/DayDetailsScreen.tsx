@@ -17,7 +17,6 @@ import {
 import { MarqueeCell } from "@/components/reports/MarqueeCell";
 import { DashboardBackdrop } from "@/components/visual/DashboardBackdrop";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
@@ -28,7 +27,6 @@ import {
 } from "@/hooks/useResponsiveLayout";
 import { useTheme } from "@/hooks/useTheme";
 import type { ReportsStackParamList } from "@/navigation/ReportsStackNavigator";
-import { fetchDayFromSupabase } from "@/lib/supabaseSync";
 import {
   DayData,
   getDayData,
@@ -77,7 +75,6 @@ export default function DayDetailsScreen() {
   const { rtlRow } = useRTL();
   const layout = useResponsiveLayout();
   const showWideLayout = layout.isWideLayout;
-  const { user } = useAuth();
   const isFocused = useIsFocused();
 
   const [loading, setLoading] = useState(true);
@@ -86,9 +83,7 @@ export default function DayDetailsScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const loaded = user?.id
-        ? await fetchDayFromSupabase(user.id, dateKey)
-        : await getDayData(dateKey);
+      const loaded = await getDayData(dateKey);
       setDayData(loaded);
     } catch (error) {
       console.error("Failed to load day details", error);
@@ -96,7 +91,7 @@ export default function DayDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dateKey, user?.id]);
+  }, [dateKey]);
 
   useEffect(() => {
     load();

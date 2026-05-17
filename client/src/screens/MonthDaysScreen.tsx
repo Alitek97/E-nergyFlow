@@ -19,7 +19,6 @@ import { NumberText } from "@/components/NumberText";
 import { ValueWithUnit } from "@/components/ValueWithUnit";
 import { DashboardBackdrop } from "@/components/visual/DashboardBackdrop";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUnits } from "@/contexts/UnitsContext";
 import { useRTL } from "@/hooks/useRTL";
@@ -32,10 +31,6 @@ import type { ReportsStackParamList } from "@/navigation/ReportsStackNavigator";
 import { getAllDaysData } from "@/lib/storage";
 import { getFlowLabelAndStyle } from "@/lib/flowLabel";
 import { computeDayStats } from "@/shared/lib/dayCalculations";
-import {
-  fetchMonthDaysFromSupabase,
-  type DaySummary,
-} from "@/lib/supabaseSync";
 import {
   getReadingsForMonth,
   type ReadingSummary,
@@ -69,7 +64,6 @@ export default function MonthDaysScreen() {
   const { rtlRow } = useRTL();
   const layout = useResponsiveLayout();
   const columnCount = layout.isWideLayout ? 2 : 1;
-  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState<DayRow[]>([]);
@@ -77,23 +71,6 @@ export default function MonthDaysScreen() {
   const loadDays = useCallback(async () => {
     setLoading(true);
     try {
-      if (user?.id) {
-        const remoteDays: DaySummary[] = await fetchMonthDaysFromSupabase(
-          user.id,
-          monthKey,
-        );
-        setDays(
-          remoteDays.map((d) => ({
-            id: d.id,
-            dateKey: d.dateKey,
-            production: d.production,
-            exportVal: d.exportVal,
-            consumption: d.consumption,
-          })),
-        );
-        return;
-      }
-
       const localDays = await getAllDaysData();
       const readingSummaries: ReadingSummary[] = localDays.map((day) => {
         const stats = computeDayStats(day);
@@ -120,7 +97,7 @@ export default function MonthDaysScreen() {
     } finally {
       setLoading(false);
     }
-  }, [monthKey, user?.id]);
+  }, [monthKey]);
 
   useEffect(() => {
     loadDays();
