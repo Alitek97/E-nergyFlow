@@ -75,6 +75,7 @@ export default function DayDetailsScreen() {
   const { rtlRow } = useRTL();
   const layout = useResponsiveLayout();
   const showWideLayout = layout.isWideLayout;
+  const isPhoneLayout = !layout.isTablet;
   const isFocused = useIsFocused();
 
   const [loading, setLoading] = useState(true);
@@ -236,16 +237,22 @@ export default function DayDetailsScreen() {
       {
         key: "name",
         title: t("feeder"),
-        flex: 1.0,
+        flex: isPhoneLayout ? 0.6 : 1.0,
         align: "center",
         renderCell: (value) => (
-          <FeederCode code={String(value)} style={styles.feederCodeCellText} />
+          <FeederCode
+            code={String(value)}
+            style={[
+              styles.feederCodeCellText,
+              isPhoneLayout && styles.feederCodeCellTextPhone,
+            ]}
+          />
         ),
       },
       {
         key: "start",
         title: t("start"),
-        flex: 1.2,
+        flex: isPhoneLayout ? 1.28 : 1.2,
         align: "center",
         isNumeric: true,
         formatValue: (value) => formatValue(Number(value)),
@@ -253,7 +260,7 @@ export default function DayDetailsScreen() {
       {
         key: "end",
         title: t("end"),
-        flex: 1.2,
+        flex: isPhoneLayout ? 1.28 : 1.2,
         align: "center",
         isNumeric: true,
         formatValue: (value) => formatValue(Number(value)),
@@ -261,13 +268,13 @@ export default function DayDetailsScreen() {
       {
         key: "diff",
         title: t("diff"),
-        flex: 0.8,
+        flex: isPhoneLayout ? 0.84 : 0.8,
         align: "center",
         isNumeric: true,
         formatValue: (value) => formatValue(Number(value)),
       },
     ],
-    [formatValue, t],
+    [formatValue, isPhoneLayout, t],
   );
 
   const TURBINE_COLS = useMemo<ReportTableColumn<TurbineRowView>[]>(
@@ -445,7 +452,13 @@ export default function DayDetailsScreen() {
                   borderColor={theme.border}
                   headerTextColor={theme.textSecondary}
                   rowKey={(row) => row.name}
-                  minWidth={!showWideLayout ? feederTableMinWidth : undefined}
+                  numericFontSize={isPhoneLayout ? 10 : undefined}
+                  compact={isPhoneLayout}
+                  minWidth={
+                    !isPhoneLayout && !showWideLayout
+                      ? feederTableMinWidth
+                      : undefined
+                  }
                 />
               </View>
             ) : null}
@@ -495,7 +508,9 @@ export default function DayDetailsScreen() {
                 <View
                   style={[
                     styles.energyStatsRow,
-                    (layout.isCompactPhone || showWideLayout) &&
+                    isPhoneLayout && styles.energyStatsRowPhone,
+                    !isPhoneLayout &&
+                      showWideLayout &&
                       styles.energyStatsRowResponsive,
                   ]}
                 >
@@ -524,7 +539,12 @@ export default function DayDetailsScreen() {
                       : null;
                     return (
                       <>
-                        <View style={styles.energyStatItem}>
+                        <View
+                          style={[
+                            styles.energyStatItem,
+                            isPhoneLayout && styles.energyStatItemPhone,
+                          ]}
+                        >
                           <View
                             style={[
                               styles.statDot,
@@ -540,11 +560,22 @@ export default function DayDetailsScreen() {
                           <ValueWithUnit
                             value={productionText.valueText}
                             unit={productionText.unitText}
+                            numberTier={isPhoneLayout ? "summary" : undefined}
+                            containerStyle={
+                              isPhoneLayout
+                                ? styles.energyValueRowPhone
+                                : undefined
+                            }
                           />
                         </View>
 
                         {flowStats ? (
-                          <View style={styles.energyStatItem}>
+                          <View
+                            style={[
+                              styles.energyStatItem,
+                              isPhoneLayout && styles.energyStatItemPhone,
+                            ]}
+                          >
                             <View
                               style={[
                                 styles.statDot,
@@ -564,11 +595,23 @@ export default function DayDetailsScreen() {
                                 unitsConfig.energyUnit
                               }
                               valueStyle={{ color: flowStats.style.color }}
+                              numberTier={isPhoneLayout ? "summary" : undefined}
+                              containerStyle={
+                                isPhoneLayout
+                                  ? styles.energyValueRowPhone
+                                  : undefined
+                              }
                             />
                           </View>
                         ) : null}
 
-                        <View style={styles.energyStatItem}>
+                        <View
+                          style={[
+                            styles.energyStatItem,
+                            isPhoneLayout && styles.energyStatItemPhone,
+                            isPhoneLayout && styles.energyStatItemPhoneFull,
+                          ]}
+                        >
                           <View
                             style={[
                               styles.statDot,
@@ -585,6 +628,12 @@ export default function DayDetailsScreen() {
                             value={consumptionText.valueText}
                             unit={consumptionText.unitText}
                             valueStyle={{ color: theme.warning }}
+                            numberTier={isPhoneLayout ? "summary" : undefined}
+                            containerStyle={
+                              isPhoneLayout
+                                ? styles.energyValueRowPhone
+                                : undefined
+                            }
                           />
                         </View>
                       </>
@@ -705,11 +754,28 @@ const styles = StyleSheet.create({
   energyStatsRowResponsive: {
     flexWrap: "wrap",
   },
+  energyStatsRowPhone: {
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+  },
   energyStatItem: {
     flex: 1,
     minWidth: 140,
     alignItems: "center",
     gap: Spacing.xs,
+  },
+  energyStatItemPhone: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minWidth: 0,
+  },
+  energyStatItemPhoneFull: {
+    flexBasis: "100%",
+  },
+  energyValueRowPhone: {
+    maxWidth: "100%",
+    justifyContent: "center",
+    flexWrap: "wrap",
   },
   statDot: {
     width: 8,
@@ -735,6 +801,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center",
+  },
+  feederCodeCellTextPhone: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   turbineCodeCellText: {
     fontSize: 15,

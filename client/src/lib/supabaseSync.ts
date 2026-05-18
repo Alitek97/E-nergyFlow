@@ -26,7 +26,6 @@ async function logSupabaseError(
   error: unknown,
 ): Promise<void> {
   if (await shouldSilenceExpectedOfflineError(error)) {
-    if (__DEV__) console.warn(`${message} skipped while offline.`);
     return;
   }
 

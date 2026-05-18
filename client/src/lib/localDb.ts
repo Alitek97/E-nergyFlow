@@ -7,7 +7,18 @@ export const LOCAL_ONLY_USER_ID = "local-only";
 let activeUserId = LOCAL_ONLY_USER_ID;
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-const DB_NAME = "energy-flow-offline.db";
+export const LOCAL_DATABASE_NAME = "energy-flow-offline.db";
+
+export type LocalDatabaseStatus =
+  | {
+      status: "ready";
+      name: string;
+    }
+  | {
+      status: "unavailable";
+      name: string;
+      error: string;
+    };
 
 export function setActiveLocalUserId(userId: string | null | undefined): void {
   activeUserId = userId || LOCAL_ONLY_USER_ID;
@@ -89,13 +100,29 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
 
 export async function getLocalDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = SQLite.openDatabaseAsync(DB_NAME).then(async (db) => {
-      await migrate(db);
-      return db;
-    });
+    dbPromise = SQLite.openDatabaseAsync(LOCAL_DATABASE_NAME).then(
+      async (db) => {
+        await migrate(db);
+        return db;
+      },
+    );
   }
 
   return dbPromise;
+}
+
+export async function getLocalDatabaseStatus(): Promise<LocalDatabaseStatus> {
+  try {
+    await getLocalDb();
+    return { status: "ready", name: LOCAL_DATABASE_NAME };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      status: "unavailable",
+      name: LOCAL_DATABASE_NAME,
+      error: message,
+    };
+  }
 }
 
 export async function runSql(

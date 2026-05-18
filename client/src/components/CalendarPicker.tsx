@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   View,
   StyleSheet,
@@ -10,6 +10,14 @@ import {
 import PressableScale from "@/components/ui/PressableScale";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import { ThemedText } from "./ThemedText";
 import { NumberText } from "./NumberText";
@@ -29,6 +37,14 @@ interface CalendarPickerProps {
   onSelectDate: (date: string) => void;
   onClose: () => void;
 }
+
+const SWIPE_MONTH_THRESHOLD = 48;
+const SWIPE_DIRECTION_LOCK = 1.35;
+const MONTH_TRANSITION_OFFSET = 42;
+const SWIPE_PREVIEW_LIMIT = MONTH_TRANSITION_OFFSET;
+const MONTH_TRANSITION_OUT_MS = 80;
+const MONTH_TRANSITION_IN_MS = 140;
+const MONTH_TRANSITION_CANCEL_MS = 110;
 
 function getTitleFontFamily(isRTL: boolean): string {
   if (isRTL) {
@@ -50,6 +66,8 @@ export function CalendarPicker({
   const { t, isRTL } = useLanguage();
   const layout = useResponsiveLayout();
   const isTitleRTL = I18nManager.isRTL || isRTL;
+  const swipeX = useSharedValue(0);
+  const isSwipeAnimating = useSharedValue(false);
   const containerWidth = Math.min(
     layout.contentWidth,
     getResponsiveValue(layout, {
@@ -153,25 +171,142 @@ export function CalendarPicker({
     return { monthText, yearText };
   }, [isTitleRTL, viewMonth, viewYear]);
 
-  const handlePrevMonth = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear(viewYear - 1);
-    } else {
-      setViewMonth(viewMonth - 1);
-    }
-  };
+  const commitMonthChange = useCallback((direction: "next" | "previous") => {
+    if (direction === "next") {
+      setViewMonth((month) => {
+        if (month === 11) {
+          setViewYear((year) => year + 1);
+          return 0;
+        }
 
-  const handleNextMonth = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear(viewYear + 1);
-    } else {
-      setViewMonth(viewMonth + 1);
+        return month + 1;
+      });
+      return;
     }
-  };
+
+    setViewMonth((month) => {
+      if (month === 0) {
+        setViewYear((year) => year - 1);
+        return 11;
+      }
+
+      return month - 1;
+    });
+  }, []);
+
+  const runAnimatedMonthChange = useCallback(
+    (direction: "next" | "previous") => {
+      if (isSwipeAnimating.value) return;
+      isSwipeAnimating.value = true;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      const exitOffset =
+        direction === "next"
+          ? -MONTH_TRANSITION_OFFSET
+          : MONTH_TRANSITION_OFFSET;
+
+      swipeX.value = withTiming(
+        exitOffset,
+        {
+          duration: MONTH_TRANSITION_OUT_MS,
+          easing: Easing.out(Easing.cubic),
+        },
+        (finished) => {
+          if (!finished) {
+            isSwipeAnimating.value = false;
+            return;
+          }
+
+          runOnJS(commitMonthChange)(direction);
+
+          swipeX.value = -exitOffset;
+          swipeX.value = withTiming(
+            0,
+            {
+              duration: MONTH_TRANSITION_IN_MS,
+              easing: Easing.out(Easing.cubic),
+            },
+            () => {
+              isSwipeAnimating.value = false;
+            },
+          );
+        },
+      );
+    },
+    [commitMonthChange, isSwipeAnimating, swipeX],
+  );
+
+  const handlePrevMonth = useCallback(() => {
+    runAnimatedMonthChange("previous");
+  }, [runAnimatedMonthChange]);
+
+  const handleNextMonth = useCallback(() => {
+    runAnimatedMonthChange("next");
+  }, [runAnimatedMonthChange]);
+
+  const calendarPanGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .maxPointers(1)
+        .activeOffsetX([-12, 12])
+        .failOffsetY([-16, 16])
+        .onUpdate((event) => {
+          if (isSwipeAnimating.value) return;
+
+          const clampedDx = Math.max(
+            -SWIPE_PREVIEW_LIMIT,
+            Math.min(SWIPE_PREVIEW_LIMIT, event.translationX),
+          );
+          swipeX.value = clampedDx;
+        })
+        .onEnd((event) => {
+          if (isSwipeAnimating.value) return;
+
+          const absDx = Math.abs(event.translationX);
+          const absDy = Math.abs(event.translationY);
+          const isHorizontalSwipe =
+            absDx >= SWIPE_MONTH_THRESHOLD &&
+            absDx > absDy * SWIPE_DIRECTION_LOCK;
+
+          if (!isHorizontalSwipe) {
+            swipeX.value = withTiming(0, {
+              duration: MONTH_TRANSITION_CANCEL_MS,
+              easing: Easing.out(Easing.cubic),
+            });
+            return;
+          }
+
+          runOnJS(runAnimatedMonthChange)(
+            event.translationX < 0 ? "next" : "previous",
+          );
+        })
+        .onFinalize(() => {
+          if (!isSwipeAnimating.value && Math.abs(swipeX.value) > 0) {
+            swipeX.value = withTiming(0, {
+              duration: MONTH_TRANSITION_CANCEL_MS,
+              easing: Easing.out(Easing.cubic),
+            });
+          }
+        }),
+    [isSwipeAnimating, runAnimatedMonthChange, swipeX],
+  );
+
+  const calendarSwipeStyle = useAnimatedStyle(() => {
+    const clampedX = Math.max(
+      -MONTH_TRANSITION_OFFSET,
+      Math.min(MONTH_TRANSITION_OFFSET, swipeX.value),
+    );
+    const progress = Math.min(Math.abs(clampedX) / MONTH_TRANSITION_OFFSET, 1);
+
+    return {
+      opacity: 1 - progress * 0.28,
+      transform: [
+        {
+          translateX: clampedX,
+        },
+      ],
+    };
+  });
 
   const handleSelectDate = (dateStr: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -282,60 +417,67 @@ export function CalendarPicker({
         </Pressable>
       </View>
 
-      <View style={styles.weekdaysRow}>
-        {displayWeekdays.map((day) => (
-          <View key={day} style={styles.weekdayCell}>
-            <ThemedText
-              type="caption"
-              style={{ color: theme.textSecondary, textAlign: "center" }}
-            >
-              {day}
-            </ThemedText>
+      <GestureDetector gesture={calendarPanGesture}>
+        <Animated.View
+          collapsable={false}
+          style={[styles.calendarSwipeArea, calendarSwipeStyle]}
+        >
+          <View style={styles.weekdaysRow}>
+            {displayWeekdays.map((day) => (
+              <View key={day} style={styles.weekdayCell}>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.textSecondary, textAlign: "center" }}
+                >
+                  {day}
+                </ThemedText>
+              </View>
+            ))}
           </View>
-        ))}
-      </View>
 
-      <View style={styles.daysGrid}>
-        {displayCalendarDays.map((day, index) => {
-          const isSelected = day.dateStr === selectedDate;
-          const isToday = day.dateStr === todayStr;
+          <View style={styles.daysGrid}>
+            {displayCalendarDays.map((day, index) => {
+              const isSelected = day.dateStr === selectedDate;
+              const isToday = day.dateStr === todayStr;
 
-          return (
-            <Pressable
-              key={index}
-              style={[
-                styles.dayCell,
-                isSelected && {
-                  backgroundColor: theme.primary,
-                  shadowColor: theme.cardShadow,
-                },
-                isToday &&
-                  !isSelected && {
-                    borderWidth: 1.5,
-                    borderColor: theme.primary,
-                    backgroundColor: theme.accentSoft,
-                  },
-              ]}
-              onPress={() => handleSelectDate(day.dateStr)}
-            >
-              <NumberText
-                size="small"
-                style={{
-                  color: isSelected
-                    ? theme.buttonText
-                    : day.isCurrentMonth
-                      ? theme.text
-                      : theme.textSecondary + "60",
-                  fontWeight: isSelected || isToday ? "600" : "400",
-                  textAlign: "center",
-                }}
-              >
-                {day.date.getDate()}
-              </NumberText>
-            </Pressable>
-          );
-        })}
-      </View>
+              return (
+                <Pressable
+                  key={index}
+                  style={[
+                    styles.dayCell,
+                    isSelected && {
+                      backgroundColor: theme.primary,
+                      shadowColor: theme.cardShadow,
+                    },
+                    isToday &&
+                      !isSelected && {
+                        borderWidth: 1.5,
+                        borderColor: theme.primary,
+                        backgroundColor: theme.accentSoft,
+                      },
+                  ]}
+                  onPress={() => handleSelectDate(day.dateStr)}
+                >
+                  <NumberText
+                    size="small"
+                    style={{
+                      color: isSelected
+                        ? theme.buttonText
+                        : day.isCurrentMonth
+                          ? theme.text
+                          : theme.textSecondary + "60",
+                      fontWeight: isSelected || isToday ? "600" : "400",
+                      textAlign: "center",
+                    }}
+                  >
+                    {day.date.getDate()}
+                  </NumberText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Animated.View>
+      </GestureDetector>
 
       <View
         style={[
@@ -485,6 +627,9 @@ const styles = StyleSheet.create({
   },
   calendarHeaderTitleYearEN: {
     fontVariant: ["tabular-nums", "lining-nums"],
+  },
+  calendarSwipeArea: {
+    width: "100%",
   },
   weekdaysRow: {
     flexDirection: "row",

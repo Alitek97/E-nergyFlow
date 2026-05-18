@@ -161,12 +161,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(newSession?.user ?? null);
       } catch (error) {
         if (await shouldSilenceExpectedOfflineError(error)) {
-          if (__DEV__)
-            console.warn("Auth initialization skipped while offline.");
+          setAuthError(null);
         } else {
           console.error("Auth initialization error:", error);
+          setAuthError("Failed to connect to server");
         }
-        setAuthError("Failed to connect to server");
       } finally {
         setLoading(false);
       }

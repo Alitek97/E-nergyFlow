@@ -188,6 +188,19 @@ export default function FeedersScreen() {
     tablet: layout.contentWidth,
     default: layout.contentWidth,
   });
+  const useMobileSummaryTable = layout.isPhone;
+  const shouldScrollSummaryTable = !showWideGrid && !useMobileSummaryTable;
+  const summaryNumberSize = useMobileSummaryTable
+    ? layout.isCompactPhone
+      ? 10
+      : 11
+    : undefined;
+  const mobileSummaryHeaderTextStyle = useMobileSummaryTable
+    ? ({
+        fontSize: layout.isCompactPhone ? 10 : 11,
+        lineHeight: layout.isCompactPhone ? 13 : 14,
+      } as const)
+    : undefined;
 
   const rows = useMemo(() => {
     return FEEDERS.map((f) => {
@@ -355,16 +368,17 @@ export default function FeedersScreen() {
     return Object.fromEntries(pairs) as Record<string, (value: string) => void>;
   }, [setDay]);
 
-  const feederSummaryCols = useMemo(
-    () =>
-      [
-        { key: "meter", label: t("feeder"), flex: 0.9, isNumeric: false },
-        { key: "start", label: t("start"), flex: 1.1, isNumeric: true },
-        { key: "end", label: t("end"), flex: 1.1, isNumeric: true },
-        { key: "diff", label: t("diff"), flex: 1.1, isNumeric: true },
-      ] as const,
-    [t],
-  );
+  const feederSummaryCols = useMemo(() => {
+    const meterFlex = useMobileSummaryTable ? 0.72 : 0.9;
+    const valueFlex = useMobileSummaryTable ? 1 : 1.1;
+
+    return [
+      { key: "meter", label: t("feeder"), flex: meterFlex, isNumeric: false },
+      { key: "start", label: t("start"), flex: valueFlex, isNumeric: true },
+      { key: "end", label: t("end"), flex: valueFlex, isNumeric: true },
+      { key: "diff", label: t("diff"), flex: valueFlex, isNumeric: true },
+    ] as const;
+  }, [t, useMobileSummaryTable]);
   const displayFeederSummaryCols = useMemo(
     () => (isRTL ? [...feederSummaryCols].reverse() : feederSummaryCols),
     [feederSummaryCols, isRTL],
@@ -657,6 +671,7 @@ export default function FeedersScreen() {
                 ]}
               >
                 <OverviewStatCardContent
+                  centered
                   label={item.label}
                   value={item.value}
                   unit={item.key === "flow" ? item.unit : undefined}
@@ -1026,34 +1041,46 @@ export default function FeedersScreen() {
           </View>
 
           <ScrollView
-            horizontal={!showWideGrid}
+            horizontal={shouldScrollSummaryTable}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={
-              !showWideGrid ? styles.summaryTableScroll : undefined
+              shouldScrollSummaryTable ? styles.summaryTableScroll : undefined
             }
           >
             <View
               style={[
                 styles.summaryTable,
-                !showWideGrid && { minWidth: summaryTableMinWidth },
+                useMobileSummaryTable && styles.summaryTableMobile,
+                shouldScrollSummaryTable && { minWidth: summaryTableMinWidth },
               ]}
             >
               <View
                 style={[
                   styles.summaryHeaderRow,
+                  useMobileSummaryTable && styles.summaryHeaderRowMobile,
                   { borderBottomColor: theme.border },
                 ]}
               >
                 {displayFeederSummaryCols.map((col) => (
                   <View
                     key={col.key}
-                    style={[styles.summaryCell, { flex: col.flex }]}
+                    style={[
+                      styles.summaryCell,
+                      useMobileSummaryTable && styles.summaryCellMobile,
+                      { flex: col.flex },
+                    ]}
                   >
                     <ThemedText
                       semanticVariant="tableHeader"
                       numberOfLines={1}
+                      adjustsFontSizeToFit={useMobileSummaryTable}
+                      minimumFontScale={
+                        useMobileSummaryTable ? 0.78 : undefined
+                      }
                       style={[
                         styles.summaryHeaderText,
+                        useMobileSummaryTable && styles.summaryHeaderTextMobile,
+                        mobileSummaryHeaderTextStyle,
                         { color: theme.textSecondary, textAlign: "center" },
                       ]}
                     >
@@ -1094,6 +1121,7 @@ export default function FeedersScreen() {
                     key={r.f}
                     style={[
                       styles.summaryDataRow,
+                      useMobileSummaryTable && styles.summaryDataRowMobile,
                       index < rows.length - 1 && {
                         borderBottomWidth: 1,
                         borderBottomColor: theme.border,
@@ -1103,7 +1131,11 @@ export default function FeedersScreen() {
                     {displayFeederSummaryCols.map((col) => (
                       <View
                         key={col.key}
-                        style={[styles.summaryCell, { flex: col.flex }]}
+                        style={[
+                          styles.summaryCell,
+                          useMobileSummaryTable && styles.summaryCellMobile,
+                          { flex: col.flex },
+                        ]}
                       >
                         {col.key === "meter" ? (
                           <View
@@ -1114,8 +1146,15 @@ export default function FeedersScreen() {
                           >
                             <FeederCode
                               code={values.meter}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit={useMobileSummaryTable}
+                              minimumFontScale={
+                                useMobileSummaryTable ? 0.82 : undefined
+                              }
                               style={[
                                 styles.feederBadgeCodeSmall,
+                                useMobileSummaryTable &&
+                                  styles.summaryBadgeCodeMobile,
                                 { color: theme.primary },
                               ]}
                             />
@@ -1123,9 +1162,16 @@ export default function FeedersScreen() {
                         ) : (
                           <NumberText
                             tier="summary"
+                            size={summaryNumberSize}
                             numberOfLines={1}
+                            adjustsFontSizeToFit={useMobileSummaryTable}
+                            minimumFontScale={
+                              useMobileSummaryTable ? 0.65 : undefined
+                            }
                             style={[
                               styles.summaryValueText,
+                              useMobileSummaryTable &&
+                                styles.summaryValueTextMobile,
                               col.key === "diff"
                                 ? { color: theme.primary }
                                 : { color: theme.text },
@@ -1281,7 +1327,7 @@ const styles = StyleSheet.create({
     minHeight: 78,
     borderRadius: BorderRadius.sm,
     padding: Spacing.md,
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
   },
   overviewItemTablet: {
@@ -1401,6 +1447,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  summaryBadgeCodeMobile: {
+    fontSize: 12,
+    lineHeight: 16,
+    maxWidth: "100%",
+  },
   copyArrowButton: {
     width: 28,
     height: 28,
@@ -1468,11 +1519,23 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     borderBottomWidth: 1,
   },
+  summaryHeaderRowMobile: {
+    alignItems: "stretch",
+    minHeight: 34,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 5,
+  },
   summaryDataRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.xs,
+  },
+  summaryDataRowMobile: {
+    alignItems: "stretch",
+    minHeight: 38,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
   },
   summaryCell: {
     minHeight: 46,
@@ -1480,15 +1543,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: Spacing.xs,
   },
+  summaryCellMobile: {
+    minHeight: 34,
+    minWidth: 0,
+    flexBasis: 0,
+    overflow: "hidden",
+    paddingHorizontal: 2,
+    paddingVertical: 1,
+  },
   summaryHeaderText: {
     textAlign: "center",
+  },
+  summaryHeaderTextMobile: {
+    maxWidth: "100%",
+    width: "100%",
   },
   summaryValueText: {
     textAlign: "center",
     fontVariant: ["tabular-nums", "lining-nums"],
   },
+  summaryValueTextMobile: {
+    maxWidth: "100%",
+    minWidth: 0,
+    width: "100%",
+  },
   summaryTable: {
     width: "100%",
+  },
+  summaryTableMobile: {
+    alignSelf: "stretch",
   },
   summaryTableScroll: {
     minWidth: "100%",

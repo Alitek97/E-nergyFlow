@@ -91,6 +91,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   contentCentered: {
+    alignSelf: "stretch",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -99,10 +100,12 @@ const styles = StyleSheet.create({
   },
   valueUnit: {
     alignSelf: "flex-start",
+    maxWidth: "100%",
     justifyContent: "flex-start",
   },
   valueUnitCentered: {
     alignSelf: "center",
+    alignItems: "center",
     justifyContent: "center",
   },
   valueOnly: {

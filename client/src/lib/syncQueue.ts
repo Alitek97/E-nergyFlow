@@ -22,6 +22,15 @@ export interface SyncQueueRecord {
   lastError: string | null;
 }
 
+export interface SyncQueueSummary {
+  pending: number;
+  failed: number;
+  total: number;
+  retryCount: number;
+  oldestCreatedAt: string | null;
+  lastError: string | null;
+}
+
 interface SyncQueueRow {
   id: string;
   user_id: string;
@@ -32,6 +41,15 @@ interface SyncQueueRow {
   created_at: string;
   retry_count: number;
   sync_status: SyncStatus;
+  last_error: string | null;
+}
+
+interface SyncQueueSummaryRow {
+  pending_count: number | null;
+  failed_count: number | null;
+  total_count: number | null;
+  retry_count: number | null;
+  oldest_created_at: string | null;
   last_error: string | null;
 }
 
@@ -193,6 +211,33 @@ export async function getPendingSyncCount(userId: string): Promise<number> {
     [userId],
   );
   return row?.count ?? 0;
+}
+
+export async function getSyncQueueSummary(
+  userId: string,
+): Promise<SyncQueueSummary> {
+  const row = await getFirstSql<SyncQueueSummaryRow>(
+    `SELECT
+       SUM(CASE WHEN sync_status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+       SUM(CASE WHEN sync_status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+       COUNT(*) AS total_count,
+       SUM(retry_count) AS retry_count,
+       MIN(created_at) AS oldest_created_at,
+       MAX(CASE WHEN sync_status = 'failed' THEN last_error ELSE NULL END) AS last_error
+     FROM sync_queue
+     WHERE user_id = ?
+       AND sync_status IN ('pending', 'failed')`,
+    [userId],
+  );
+
+  return {
+    pending: row?.pending_count ?? 0,
+    failed: row?.failed_count ?? 0,
+    total: row?.total_count ?? 0,
+    retryCount: row?.retry_count ?? 0,
+    oldestCreatedAt: row?.oldest_created_at ?? null,
+    lastError: row?.last_error ?? null,
+  };
 }
 
 export async function markSyncRecordSynced(id: string): Promise<void> {

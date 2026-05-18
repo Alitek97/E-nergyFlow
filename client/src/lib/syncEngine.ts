@@ -3,6 +3,7 @@ import {
   getCurrentConnectivity,
   isExpectedOfflineError,
 } from "@/lib/connectivity";
+import { getMetadata, setMetadata } from "@/lib/localDb";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   getDayData,
@@ -55,6 +56,20 @@ type SettingsSyncPayload = {
 };
 
 let runningSync: Promise<SyncRunResult> | null = null;
+
+function lastSuccessfulSyncKey(userId: string): string {
+  return `sync:last-successful-at:${userId}`;
+}
+
+export async function getLastSuccessfulSyncAt(
+  userId: string,
+): Promise<string | null> {
+  return getMetadata(lastSuccessfulSyncKey(userId));
+}
+
+async function setLastSuccessfulSyncAt(userId: string): Promise<void> {
+  await setMetadata(lastSuccessfulSyncKey(userId), new Date().toISOString());
+}
 
 class SyncPausedOfflineError extends Error {
   constructor() {
@@ -221,7 +236,6 @@ async function processQueue(userId: string): Promise<{
       else pulled += 1;
     } catch (error) {
       if (await isOfflineSyncError(error)) {
-        if (__DEV__) console.warn("Sync paused while offline.");
         return { pushed, pulled, failed, offline: true };
       }
 
@@ -357,9 +371,14 @@ async function runSync(userId: string): Promise<SyncRunResult> {
 
     const pending = await getPendingSyncCount(userId);
     const failed = queueResult.failed;
+    const status = failed > 0 || pending > 0 ? "failed" : "synced";
+
+    if (status === "synced") {
+      await setLastSuccessfulSyncAt(userId);
+    }
 
     return {
-      status: failed > 0 || pending > 0 ? "failed" : "synced",
+      status,
       pushed: queueResult.pushed + pullResult.pushed,
       pulled: queueResult.pulled + pullResult.pulled,
       failed,
